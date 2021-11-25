@@ -1,0 +1,77 @@
+package main
+
+import (
+	"context"
+	"fmt"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	_ "k8s.io/client-go/plugin/pkg/client/auth"
+
+	kubeConfig "sigs.k8s.io/controller-runtime/pkg/client/config"
+)
+
+func main() {
+	var namespaces = []string{"tsb", "istio-system"}
+	// obtain local k8s config
+	cfg, err := kubeConfig.GetConfig()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// establish connection to k8s cluster
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	// obtain MP and CP secret values
+	for i := range namespaces {
+		es_username, es_password, es_ca_cert := GetSecrets(clientset, namespaces[i])
+		fmt.Println(es_username, es_password, es_ca_cert)
+	}
+
+	// obtain CP tokens
+	var tokens []string
+	tokens = GetTokens(clientset, namespaces[1])
+	fmt.Println(tokens)
+}
+
+func GetSecrets(c *kubernetes.Clientset, n string) (string, string, string) {
+	var es_secrets_mp [2]string
+	es_secrets_mp[0] = "elastic-credentials"
+	es_secrets_mp[1] = "es-certs"
+
+	es_credentials_secret_mp, err := c.CoreV1().Secrets(n).Get(context.TODO(), es_secrets_mp[0], metav1.GetOptions{})
+	if err != nil {
+		println(err)
+	}
+	es_username := string(es_credentials_secret_mp.Data["username"])
+	es_password := string(es_credentials_secret_mp.Data["password"])
+
+	es_ca_cert_secret_mp, err := c.CoreV1().Secrets(n).Get(context.TODO(), es_secrets_mp[1], metav1.GetOptions{})
+	if err != nil {
+		println(err)
+	}
+	es_ca_cert := string(es_ca_cert_secret_mp.Data["ca.crt"])
+	return es_username, es_password, es_ca_cert
+
+}
+
+func GetTokens(c *kubernetes.Clientset, n string) []string {
+
+	var es_tokens_cp = []string{"oap-token configured", "otel-token configured", "zipkin-token configured", "xcp-edge-central-auth-token"}
+	tkn := make([]string, len(es_tokens_cp))
+
+	for i, t := range es_tokens_cp {
+
+		out, err := c.CoreV1().Secrets(n).Get(context.TODO(), t, metav1.GetOptions{})
+		if err == nil {
+			tkn[i] = string(out.Data["jwt"])
+		}
+	}
+
+	return tkn
+}
