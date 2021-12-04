@@ -1,1 +1,0 @@
-# tsb-config-validator
