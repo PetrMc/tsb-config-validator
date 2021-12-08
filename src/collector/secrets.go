@@ -9,17 +9,6 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
-// func Secrets() {
-// 	// obtain CP secret values
-// 		es_username, es_password, es_ca_cert := GetSecrets(clientset, namespaces[i])
-// 		fmt.Println(es_username, es_password, es_ca_cert)
-
-// 	// // obtain CP tokens
-// 	// var tokens []string
-// 	// tokens = GetTokens(clientset, namespaces[1])
-// 	// fmt.Println(tokens)
-// }
-
 type ES struct {
 	Username, Password, Cert string
 }
@@ -42,6 +31,7 @@ func Secrets(c *kubernetes.Clientset, n string) ES {
 		println(err)
 	}
 	s.Cert = string(es_ca_cert_secret_mp.Data["ca.crt"])
+	// fmt.Printf(s.Username, s.Password, s.Cert)
 	return s
 
 }

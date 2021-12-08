@@ -3,24 +3,39 @@ package collector
 import (
 	"fmt"
 	"os"
-	"regexp"
-	"strconv"
-	"strings"
 
-	"github.com/PetrMc/tsb-config-validator/api/v1alpha1"
+	"github.com/PetrMc/tsb-config-validator/api/v1alpha1/controlplane"
 	"k8s.io/client-go/kubernetes"
 )
 
-// config variable stores current k8s context of the user environment
+var ElasticSearchSettings_Protocol_name = map[int32]string{
+	0: "https",
+	1: "http",
+}
 
-func CPData() (ES, CPTelemetryStore) {
+type CPTelemetryStore struct {
+	Host, Port, Protocol, Version string
+	SelfSigned                    bool
+}
+
+type TSBConf struct {
+	Host, Port, ClusterName string
+}
+
+func CPData() (ES, CPTelemetryStore, TSBConf) {
+
+	// config is used to get current context
+
 	config = k8s()
+
+	// cpsc is used from k8s `config` for CP access
 	cpcs, err := NewForConfig(config)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(123)
 	}
 
+	// get details of CP CRD variables
 	cp, err := cpcs.CP("istio-system").Get("controlplane")
 	if err != nil {
 
@@ -28,7 +43,11 @@ func CPData() (ES, CPTelemetryStore) {
 		os.Exit(123)
 	}
 
+
+
+	// there is slightly different config that is required to collect secrets
 	clientset, err := kubernetes.NewForConfig(config)
+
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(123)
@@ -36,34 +55,38 @@ func CPData() (ES, CPTelemetryStore) {
 
 	creds := Secrets(clientset, "istio-system")
 
-	// var conn CPTelemetryStore
-	conn := parameters(cp)
+	var conn CPTelemetryStore
+	conn, tsb := parameters(cp)
 
-	// es_username, es_password, es_ca_cert := Secrets(clientSet, "istio-system")
-	// fmt.Println(es_username, es_password, es_ca_cert)
-
-	return creds, conn
+	return creds, conn, tsb
 
 }
 
-func parameters(c *v1alpha1.ControlPlane) CPTelemetryStore {
+func parameters(c *controlplane.ControlPlane) (CPTelemetryStore, TSBConf) {
+	var j CPTelemetryStore = telemetry(c)
+	var k TSBConf = tsb(c)
+
+	return j, k
+}
+
+func telemetry(c *controlplane.ControlPlane) CPTelemetryStore {
 	b := CPTelemetryStore{}
-	ts := make(map[string]string)
 
-	st := fmt.Sprintf("%v", c)
-	re := regexp.MustCompile(`"telemetryStore":{"elastic":\{(.*?)\}`)
-	ar := strings.Split(re.FindStringSubmatch(st)[1], ",")
+	b.Host = c.Spec.TM.Elastic.Host
+	b.Port = fmt.Sprint(c.Spec.TM.Elastic.Port)
+	b.Protocol = ElasticSearchSettings_Protocol_name[c.Spec.TM.Elastic.Protocol]
+	b.SelfSigned = c.Spec.TM.Elastic.SelfSigned
+	b.Version = fmt.Sprint(c.Spec.TM.Elastic.Version)
 
-	for i := range ar {
-		kv := strings.Split(ar[i], ":")
-		ts[strings.Trim(kv[0], "\"")] = strings.Trim(kv[1], "\"")
+	return b
+}
 
-	}
+func tsb(c *controlplane.ControlPlane) TSBConf {
+	b := TSBConf{}
 
-	b.Host = ts["host"]
-	b.Port = ts["port"]
-	b.Version = ts["version"]
-	b.SSL, _ = strconv.ParseBool(ts["selfSigned"])
+	b.Host = c.Spec.MP.Host
+	b.Port = fmt.Sprint(c.Spec.MP.Port)
+	b.ClusterName = c.Spec.MP.ClusterName
 
 	return b
 }

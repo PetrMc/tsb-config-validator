@@ -3,12 +3,12 @@ package collector
 import (
 	"context"
 
-	"github.com/PetrMc/tsb-config-validator/api/v1alpha1"
+	"github.com/PetrMc/tsb-config-validator/api/v1alpha1/controlplane"
 	"k8s.io/client-go/rest"
 )
 
 type CPInterface interface {
-	Get(name string) (*v1alpha1.ControlPlane, error)
+	Get(name string) (*controlplane.ControlPlane, error)
 }
 
 type CPClient struct {
@@ -16,11 +16,12 @@ type CPClient struct {
 	ns         string
 }
 
-func (c *CPClient) Get(name string) (*v1alpha1.ControlPlane, error) {
+func (c *CPClient) Get(name string) (*controlplane.ControlPlane, error) {
 
-	result := v1alpha1.ControlPlane{}
+	result := controlplane.ControlPlane{}
+	var err error
 	ctx := context.Background()
-	err := c.restClient.
+	err = c.restClient.
 		Get().
 		Namespace(c.ns).
 		Resource("controlplanes").
