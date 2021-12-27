@@ -8,6 +8,8 @@ require (
 	sigs.k8s.io/controller-runtime v0.10.3
 )
 
+require github.com/mattn/go-isatty v0.0.3 // indirect
+
 require (
 	cloud.google.com/go v0.54.0 // indirect
 	github.com/Azure/go-autorest v14.2.0+incompatible // indirect
@@ -26,6 +28,7 @@ require (
 	github.com/googleapis/gnostic v0.5.5 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/json-iterator/go v1.1.11 // indirect
+	github.com/kopoli/go-terminal-size v0.0.0-20170219200355-5c97524c8b54
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect

@@ -8,10 +8,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-var ElasticSearchSettings_Protocol_name = map[int32]string{
-	0: "https",
-	1: "http",
-}
+// var ElasticSearchSettings_Protocol_name = map[int32]string{
+// 	0: "https",
+// 	1: "http",
+// }
 
 type CPTelemetryStore struct {
 	Host, Port, Protocol, Version string
@@ -43,8 +43,6 @@ func CPData() (ES, CPTelemetryStore, TSBConf) {
 		os.Exit(123)
 	}
 
-
-
 	// there is slightly different config that is required to collect secrets
 	clientset, err := kubernetes.NewForConfig(config)
 
@@ -74,7 +72,12 @@ func telemetry(c *controlplane.ControlPlane) CPTelemetryStore {
 
 	b.Host = c.Spec.TM.Elastic.Host
 	b.Port = fmt.Sprint(c.Spec.TM.Elastic.Port)
-	b.Protocol = ElasticSearchSettings_Protocol_name[c.Spec.TM.Elastic.Protocol]
+	// b.Protocol = ElasticSearchSettings_Protocol_name[c.Spec.TM.Elastic.Protocol]
+	if c.Spec.TM.Elastic.Protocol == "" {
+		b.Protocol = "https"
+	} else {
+		b.Protocol = c.Spec.TM.Elastic.Protocol
+	}
 	b.SelfSigned = c.Spec.TM.Elastic.SelfSigned
 	b.Version = fmt.Sprint(c.Spec.TM.Elastic.Version)
 
