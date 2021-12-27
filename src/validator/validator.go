@@ -3,10 +3,12 @@ package validator
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/PetrMc/tsb-config-validator/src/collector"
 	"github.com/PetrMc/tsb-config-validator/src/output"
@@ -16,7 +18,12 @@ func Checklist(cred *collector.ES, conn collector.CPTelemetryStore) {
 
 	r := CheckMP(cred, &conn)
 	p := output.CustomPrint()
-	if r.StatusCode == 200 {
+	println(r.StatusCode)
+
+	switch r.StatusCode {
+
+	case 200:
+
 		m, v := VersionCheck(r, conn.Version)
 		if m {
 			fmt.Printf("\n%v\nResponse status:%v\n%vThe settings seem to be working as it is - no additional checks are done\n", p.Stars, r.Status, p.Indent)
@@ -27,41 +34,76 @@ func Checklist(cred *collector.ES, conn collector.CPTelemetryStore) {
 		}
 		// os.Exit(0)
 
-	} else {
-		fmt.Printf("\n%v\nResponse status:%v\n%v\nThe settings are not working - the series of tests will try different combination of setting to get to the bottom of the problem\n", p.Stars, r.Status, p.Indent)
-	}
+	case 401:
+		fmt.Printf("case test\n")
+		PasswdCheck(cred)
 
-	tconn := conn
+	default:
+		fmt.Printf("\n%v\nResponse status:%v\n%v\nThe settings are not working - the series of tests will try different combination of setting to get to the bottom of the problem\n", p.Stars, r.Status, p.Indent)
+		BruteForce(cred, &conn)
+
+	}
+}
+func BruteForce(cr *collector.ES, c *collector.CPTelemetryStore) {
+
+	var r *http.Response
+	tconn := c
+	p := output.CustomPrint()
 
 	prt := []string{"http", "https"}
 	crt := []bool{true, false}
 
-combine:
 	for _, i := range prt {
-		for _, c := range crt {
+		for _, ss := range crt {
 
-			if i != conn.Protocol || c != conn.SelfSigned {
+			if i != c.Protocol || ss != c.SelfSigned {
 
 				tconn.Protocol = i
-				tconn.SelfSigned = c
+				tconn.SelfSigned = ss
 				fmt.Printf("\n%v\nTrying the following combination:\nHost - %v | Port - %v | Protocol - %v | Selfsigned - %v \n", p.Stars, tconn.Host, tconn.Port, tconn.Protocol, tconn.SelfSigned)
-				r = CheckMP(cred, &tconn)
+				r = CheckMP(cr, tconn)
 				fmt.Printf("Response status:%v\n", r.Status)
 			}
 			if r.StatusCode == 200 {
 				fmt.Printf("\n%v\nBINGO !!!\nWe got the correct settings: \n", p.Stars)
 				fmt.Printf("\nHost - %v | Port - %v | Protocol - %v | Selfsigned - %v \n", tconn.Host, tconn.Port, tconn.Protocol, tconn.SelfSigned)
 				m, v := VersionCheck(r, tconn.Version)
-				if m {
+				if !m {
 					fmt.Printf("Additionally - please make sure ES Version is set to %v\n%v", v, p.Stars)
 				}
 				// os.Exit(0)
-				break combine
+				return
 			}
-			tconn = conn
+			tconn = c
 
 		}
 	}
+
+}
+
+func PasswdCheck(cr *collector.ES) {
+	fmt.Printf("password check")
+	origu := base64.StdEncoding.EncodeToString([]byte(cr.Username))
+	modu := base64.StdEncoding.EncodeToString([]byte(strings.Replace(cr.Username, "\n", "", -1)))
+	if origu == modu {
+		fmt.Printf("match username")
+	} else {
+		fmt.Printf("No match username")
+
+	}
+
+	origp := base64.StdEncoding.EncodeToString([]byte(cr.Password))
+	modp := base64.StdEncoding.EncodeToString([]byte(strings.Replace(cr.Password, "\n", "", -1)))
+	if origp == modp {
+		fmt.Printf("match Pass")
+	} else {
+		fmt.Printf("No match pass")
+	}
+
+	// fmt.Println(sEnc)
+	// sDec, _ := base64.StdEncoding.DecodeString(sEnc)
+	// fmt.Println(string(sDec))
+	// fmt.Println(strings.Replace(cr.Username, "\n", "", -1))
 
 }
 
