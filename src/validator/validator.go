@@ -16,9 +16,9 @@ import (
 
 func Checklist(cred *collector.ES, conn collector.CPTelemetryStore) {
 
-	r := CheckMP(cred, &conn)
 	p := output.CustomPrint()
-	println(r.StatusCode)
+
+	r := CheckMP(cred, &conn)
 
 	switch r.StatusCode {
 
@@ -29,16 +29,17 @@ func Checklist(cred *collector.ES, conn collector.CPTelemetryStore) {
 			fmt.Printf("\n%v\nResponse status:%v\n%vThe settings seem to be working as it is - no additional checks are done\n", p.Stars, r.Status, p.Indent)
 		} else {
 			fmt.Printf("\n%v\nResponse status:%v\n", p.Stars, r.Status)
-
 			fmt.Printf("\n%v\nHoever Elastic Search Version mismatch is detected:\nVersion specified in CP is %v\nWhile ES instance returns: %v\n%v", p.Indent, conn.Version, v, p.Stars)
 		}
 		// os.Exit(0)
 
 	case 401:
-		fmt.Printf("case test\n")
+
+		fmt.Printf("\nReceived HTTP Code: %v, which means credentials are not correctly specified in \"elastic-credentials\" secret in \"istio-system\"\n", r.StatusCode)
 		PasswdCheck(cred)
 
 	default:
+
 		fmt.Printf("\n%v\nResponse status:%v\n%v\nThe settings are not working - the series of tests will try different combination of setting to get to the bottom of the problem\n", p.Stars, r.Status, p.Indent)
 		BruteForce(cred, &conn)
 
@@ -82,22 +83,30 @@ func BruteForce(cr *collector.ES, c *collector.CPTelemetryStore) {
 }
 
 func PasswdCheck(cr *collector.ES) {
-	fmt.Printf("password check")
+
+	p := output.CustomPrint()
+
 	origu := base64.StdEncoding.EncodeToString([]byte(cr.Username))
+
+	if len(cr.Password) == 0 || len(cr.Username) == 0 {
+		fmt.Printf("\n%v\nNot able to retieve username or password from \"elasitc-search secret\" in \"istio-system\" namaspace. Please check if the secret exists\n", p.Stars)
+		return
+	}
+
 	modu := base64.StdEncoding.EncodeToString([]byte(strings.Replace(cr.Username, "\n", "", -1)))
-	if origu == modu {
-		fmt.Printf("match username")
-	} else {
-		fmt.Printf("No match username")
+	if origu != modu {
+
+		fmt.Printf("\n%v\nUsername seems to have return cariage \"\\n\" in it. \nPlease update \"elasitc-search secret\" in \"istio-system\" namaspace.\nUsername should be %v (currently it returns %v)\n", p.Stars, modu, origu)
 
 	}
 
 	origp := base64.StdEncoding.EncodeToString([]byte(cr.Password))
+
 	modp := base64.StdEncoding.EncodeToString([]byte(strings.Replace(cr.Password, "\n", "", -1)))
-	if origp == modp {
-		fmt.Printf("match Pass")
-	} else {
-		fmt.Printf("No match pass")
+	if origp != modp {
+
+		fmt.Printf("\n%v\nPassword seems to have return cariage \"\\n\" in it. \nPlease update \"elasitc-search secret\" in \"istio-system\" namaspace.\nPassword should be %v (currently it returns %v)\n", p.Stars, modp, origp)
+
 	}
 
 	// fmt.Println(sEnc)
