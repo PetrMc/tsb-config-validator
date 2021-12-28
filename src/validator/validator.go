@@ -14,9 +14,20 @@ import (
 	"github.com/PetrMc/tsb-config-validator/src/output"
 )
 
-func Checklist(cred *collector.ES, conn collector.CPTelemetryStore) {
+func Checklist(cred *collector.ES, conn collector.CPTelemetryStore, tokens collector.TSBTokens, fe bool) {
+
+	if fe {
+		Same(cred, &conn, &tokens)
+	} else {
+		Diff(cred, conn)
+	}
+}
+
+func Diff(cred *collector.ES, conn collector.CPTelemetryStore) {
 
 	p := output.CustomPrint()
+
+	fmt.Printf("\nChecking direct connection between CP and MP\n")
 
 	r := CheckMP(cred, &conn)
 
@@ -45,10 +56,12 @@ func Checklist(cred *collector.ES, conn collector.CPTelemetryStore) {
 
 	}
 }
+
 func BruteForce(cr *collector.ES, c *collector.CPTelemetryStore) {
 
 	var r *http.Response
 	tconn := c
+
 	p := output.CustomPrint()
 
 	prt := []string{"http", "https"}
@@ -66,19 +79,37 @@ func BruteForce(cr *collector.ES, c *collector.CPTelemetryStore) {
 				fmt.Printf("Response status:%v\n", r.Status)
 			}
 			if r.StatusCode == 200 {
-				fmt.Printf("\n%v\nBINGO !!!\nWe got the correct settings: \n", p.Stars)
-				fmt.Printf("\nHost - %v | Port - %v | Protocol - %v | Selfsigned - %v \n", tconn.Host, tconn.Port, tconn.Protocol, tconn.SelfSigned)
+
 				m, v := VersionCheck(r, tconn.Version)
-				if !m {
-					fmt.Printf("Additionally - please make sure ES Version is set to %v\n%v", v, p.Stars)
+				if v != "0" {
+					fmt.Printf("\n%v\nBINGO !!!\nWe got the correct settings: \n", p.Stars)
+					fmt.Printf("\nHost - %v | Port - %v | Protocol - %v | Selfsigned - %v \n", tconn.Host, tconn.Port, tconn.Protocol, tconn.SelfSigned)
+					if !m {
+						fmt.Printf("Additionally - please make sure ES Version is set to %v\n%v", v, p.Stars)
+						// os.Exit(0)
+						return
+					}
+				} else {
+					fmt.Printf("\n%v\nNot so right...\nWe got the settings that produce correct code but ES is not responding with correct body: \n", p.Stars)
 				}
-				// os.Exit(0)
-				return
+
 			}
 			tconn = c
 
 		}
 	}
+}
+
+func Same(cred *collector.ES, conn *collector.CPTelemetryStore, t *collector.TSBTokens) {
+
+	p := output.CustomPrint()
+
+	fmt.Printf("\nChecking connection between CP and FrontEnvoy (running in MP)\n")
+	r := CheckFrontEnvoy(cred, conn, t.Zipkint)
+
+	fmt.Printf("\n%v\nWhile the connection is established succesfully the page returned is not what is expected from ES.\nContinuing.... \n", p.Stars)
+
+	fmt.Println(r.StatusCode)
 
 }
 
@@ -109,11 +140,55 @@ func PasswdCheck(cr *collector.ES) {
 
 	}
 
-	// fmt.Println(sEnc)
-	// sDec, _ := base64.StdEncoding.DecodeString(sEnc)
-	// fmt.Println(string(sDec))
-	// fmt.Println(strings.Replace(cr.Username, "\n", "", -1))
+}
 
+func CheckFrontEnvoy(cr *collector.ES, c *collector.CPTelemetryStore, t string) *http.Response {
+	var req *http.Request
+	var resp *http.Response
+	var client *http.Client
+	var path string
+	var err error
+
+	pool := x509.NewCertPool()
+
+	path = "https://" + c.Host + ":" + c.Port
+	// path = "https://cx-jwt-token-tsb.cx.tetrate.info:8443/"
+	// fmt.Println(t)
+	// p := output.CustomPrint()
+	fmt.Printf("Establishing SECURE connection per CP Manifest settings\n")
+	if c.SelfSigned {
+
+		if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
+			fmt.Println("Failed to append cert")
+		}
+
+	}
+	tc := &tls.Config{RootCAs: pool}
+	tr := &http.Transport{TLSClientConfig: tc}
+	client = &http.Client{Transport: tr}
+
+	req, err = http.NewRequest("GET", path, nil)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	req.SetBasicAuth(cr.Username, cr.Password)
+	// req.Header.Set("name", "value")
+	req.Header.Set("tsb-route-target", "elasticsearch")
+	req.Header.Set("x-tetrate-token", t)
+	// fmt.Println(t, req.Header)
+
+	resp, err = client.Do(req)
+
+	if err != nil {
+		resp = new(http.Response)
+		resp.Status = err.Error()
+		return resp
+	}
+	b, err := io.ReadAll(resp.Body)
+	myString := string(b[:])
+	fmt.Println(myString)
+	return resp
 }
 
 func CheckMP(cr *collector.ES, c *collector.CPTelemetryStore) *http.Response {
@@ -175,7 +250,13 @@ func VersionCheck(r *http.Response, v string) (bool, string) {
 
 	// fmt.Println(string(b))
 	data := ESResponse{}
-	json.Unmarshal([]byte(b), &data)
+	err = json.Unmarshal([]byte(b), &data)
+	if err != nil {
+		// fmt.Println(err.Error())
+		fmt.Println(data)
+
+		return false, "0"
+	}
 
 	if data.Version.Number[0:1] == v {
 		return true, data.Version.Number[0:1]

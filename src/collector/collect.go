@@ -22,7 +22,7 @@ type TSBConf struct {
 	Host, Port, ClusterName string
 }
 
-func CPData() (ES, CPTelemetryStore, TSBConf) {
+func CPData() (ES, CPTelemetryStore, TSBConf, TSBTokens) {
 
 	// config is used to get current context
 
@@ -52,11 +52,12 @@ func CPData() (ES, CPTelemetryStore, TSBConf) {
 	}
 
 	creds := Secrets(clientset, "istio-system")
+	tokens := TokensAll(clientset)
 
 	var conn CPTelemetryStore
 	conn, tsb := parameters(cp)
 
-	return creds, conn, tsb
+	return creds, conn, tsb, tokens
 
 }
 

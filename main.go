@@ -7,11 +7,11 @@ import (
 )
 
 func main() {
-	cred, conn, tsb := collector.CPData()
+	cred, conn, tsb, tokens := collector.CPData()
 
-	output.PrintCP(&cred, &conn, &tsb)
+	fe := output.PrintCP(&cred, &conn, &tsb)
 
-	validator.Checklist(&cred, conn)
+	validator.Checklist(&cred, conn, tokens, fe)
 
 	// fmt.Printf("Done main module.\n tsb port: %v\ncred username: %v pass: %v\n conn: %v\n", tsb, cred.Username, cred.Password, conn)
 

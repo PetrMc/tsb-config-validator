@@ -36,18 +36,27 @@ func Secrets(c *kubernetes.Clientset, n string) ES {
 
 }
 
-// func GetTokens(c *kubernetes.Clientset, n string) []string {
+type TSBTokens struct {
+	Oapt, Otelt, Zipkint, Xcpt string
+}
 
-// 	var es_tokens_cp = []string{"oap-token configured", "otel-token configured", "zipkin-token configured", "xcp-edge-central-auth-token"}
-// 	tkn := make([]string, len(es_tokens_cp))
+func TokensAll(c *kubernetes.Clientset) TSBTokens {
+	var tokens = []string{"oap-token", "otel-token", "zipkin-token", "xcp-edge-central-auth-token"}
 
-// 	for i, t := range es_tokens_cp {
+	tn := TSBTokens{}
+	tn.Oapt = Tokens(c, tokens[0])
+	tn.Otelt = Tokens(c, tokens[1])
+	tn.Zipkint = Tokens(c, tokens[2])
+	tn.Xcpt = Tokens(c, tokens[3])
 
-// 		out, err := c.CoreV1().Secrets(n).Get(context.TODO(), t, metav1.GetOptions{})
-// 		if err == nil {
-// 			tkn[i] = string(out.Data["jwt"])
-// 		}
-// 	}
+	return tn
+}
 
-// 	return tkn
-// }
+func Tokens(c *kubernetes.Clientset, t string) string {
+	var tkn string
+	out, err := c.CoreV1().Secrets("istio-system").Get(context.TODO(), t, metav1.GetOptions{})
+	if err == nil {
+		tkn = string(out.Data["token"])
+	}
+	return tkn
+}
