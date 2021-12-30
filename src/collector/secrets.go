@@ -57,6 +57,9 @@ func Tokens(c *kubernetes.Clientset, t string) string {
 	out, err := c.CoreV1().Secrets("istio-system").Get(context.TODO(), t, metav1.GetOptions{})
 	if err == nil {
 		tkn = string(out.Data["token"])
+		if len(tkn) == 0 {
+			tkn = string(out.Data["jwt"])
+		}
 	}
 	return tkn
 }
