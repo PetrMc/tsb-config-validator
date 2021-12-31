@@ -15,7 +15,7 @@ func k8s() *rest.Config {
 	var err error
 	config, err = kubeConfig.GetConfig()
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println(err.Error())
 		os.Exit(123)
 	}
 	return config

@@ -19,17 +19,17 @@ func Secrets(c *kubernetes.Clientset, n string) ES {
 	secret_names[0] = "elastic-credentials"
 	secret_names[1] = "es-certs"
 
-	es_credentials_secret_mp, err := c.CoreV1().Secrets(n).Get(context.TODO(), secret_names[0], metav1.GetOptions{})
-	if err != nil {
-		println(err)
-	}
+	es_credentials_secret_mp, _ := c.CoreV1().Secrets(n).Get(context.TODO(), secret_names[0], metav1.GetOptions{})
+	// if err != nil {
+	// 	println(err.Error())
+	// }
 	s.Username = string(es_credentials_secret_mp.Data["username"])
 	s.Password = string(es_credentials_secret_mp.Data["password"])
 
-	es_ca_cert_secret_mp, err := c.CoreV1().Secrets(n).Get(context.TODO(), secret_names[1], metav1.GetOptions{})
-	if err != nil {
-		println(err)
-	}
+	es_ca_cert_secret_mp, _ := c.CoreV1().Secrets(n).Get(context.TODO(), secret_names[1], metav1.GetOptions{})
+	// if err != nil {
+	// println(err.Error())
+	// }
 	s.Cert = string(es_ca_cert_secret_mp.Data["ca.crt"])
 	// fmt.Printf(s.Username, s.Password, s.Cert)
 	return s

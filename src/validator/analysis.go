@@ -9,9 +9,7 @@ import (
 func Analysis(c *collector.ES, n collector.CPTelemetryStore, t *collector.TSBConf, tkn *collector.TSBTokens) {
 
 	p := CustomPrint()
-	PasswdCheck(c)
-	TokenCheck(tkn)
-	CertCheck(n.Host, n.Port)
+
 	fmt.Println(p.Stars)
 	fmt.Printf("The following data is received for Control plane: --- %v --- \n", t.ClusterName)
 	fmt.Printf("%vManagement plane Front Envoy \n%vAddress: %v\n%vPort: %v\n", p.Indent, p.Twoindent, t.Host, p.Twoindent, t.Port)
@@ -21,7 +19,7 @@ func Analysis(c *collector.ES, n collector.CPTelemetryStore, t *collector.TSBCon
 		fmt.Printf("Elastic config points to %v which is the Front Envoy of MP\n", n.Host)
 
 		if n.Port == t.Port {
-			fmt.Printf("the port %v is also matches (which is only allowed config with Front Envoy for Elastic Search\n", n.Port)
+			fmt.Printf("the port %v is also matches (which is the only allowed config with Front Envoy for Elastic Search)\n", n.Port)
 			MPEndPoint(c, n, tkn)
 
 		} else {
@@ -34,10 +32,16 @@ func Analysis(c *collector.ES, n collector.CPTelemetryStore, t *collector.TSBCon
 		fmt.Printf("CP plane is configured for direct (not via FrontEnvoy) access to ElasticSearch via:\n%vHost: %v\n%vPort %v\n", p.Indent, n.Host, p.Indent, n.Port)
 		fmt.Printf("%vProtocol: %v\n", p.Indent, n.Protocol)
 		SSCheck(n.SelfSigned)
-		ESEndpoint(c, n)
+		Worker(c, n)
 
 	}
 
+	fmt.Printf("\nAnalyzing ES Credentials...\n")
+	PasswdCheck(c)
+	fmt.Printf("\nChecking tokens presence and expiry date...\n")
+	TokenCheck(tkn)
+
+	// CertCheck(n.Host, n.Port, n.SelfSigned, c.Cert)
 	fmt.Println(p.Stars)
 
 	return

@@ -31,7 +31,7 @@ func CPData() (ES, CPTelemetryStore, TSBConf, TSBTokens) {
 	// cpsc is used from k8s `config` for CP access
 	cpcs, err := NewForConfig(config)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println(err.Error())
 		os.Exit(123)
 	}
 
@@ -39,7 +39,7 @@ func CPData() (ES, CPTelemetryStore, TSBConf, TSBTokens) {
 	cp, err := cpcs.CP("istio-system").Get("controlplane")
 	if err != nil {
 
-		fmt.Println(err)
+		fmt.Println(err.Error())
 		os.Exit(123)
 	}
 
@@ -47,7 +47,7 @@ func CPData() (ES, CPTelemetryStore, TSBConf, TSBTokens) {
 	clientset, err := kubernetes.NewForConfig(config)
 
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println(err.Error())
 		os.Exit(123)
 	}
 

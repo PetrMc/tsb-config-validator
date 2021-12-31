@@ -35,7 +35,7 @@ func BruteForce(cr *collector.ES, c collector.CPTelemetryStore, prt []string) {
 				r, b = MPCheck(cr, &tconn)
 				fmt.Printf("Response status:%v\n", r.Status)
 			}
-			if Codes(c, r, b) {
+			if Codes(tconn, r, b, false) {
 				return
 			}
 			tconn = c
@@ -92,7 +92,7 @@ func CheckFrontEnvoy(cr *collector.ES, c *collector.CPTelemetryStore, t string) 
 			tc = &tls.Config{RootCAs: pool}
 		}
 	} else {
-		fmt.Printf("\"es-certs\" doesn't have the expected certificate (or the secret doesn't exist at all)")
+		fmt.Printf("\"es-certs\" doesn't have the expected certificate (or the secret doesn't exist at all)... Trying connectivity using Public PKI\n")
 		tc = &tls.Config{InsecureSkipVerify: true}
 	}
 
@@ -102,7 +102,7 @@ func CheckFrontEnvoy(cr *collector.ES, c *collector.CPTelemetryStore, t string) 
 
 	req, err = http.NewRequest("GET", path, nil)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println(err.Error())
 	}
 
 	req.SetBasicAuth(cr.Username, cr.Password)
@@ -122,7 +122,7 @@ func CheckFrontEnvoy(cr *collector.ES, c *collector.CPTelemetryStore, t string) 
 	// fmt.Printf("\nCbbbbb)\n")
 	// fmt.Println(string(b[:]), resp.Status, resp.Body, b)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println(err.Error())
 	}
 
 	return resp, b
@@ -161,7 +161,7 @@ func MPCheck(cr *collector.ES, c *collector.CPTelemetryStore) (*http.Response, [
 	}
 	req, err = http.NewRequest("GET", path, nil)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println(err.Error())
 	}
 
 	req.SetBasicAuth(cr.Username, cr.Password)
@@ -191,6 +191,8 @@ func VersionCheck(b []byte, v string) (bool, string) {
 	// }
 
 	data := ESResponse{}
+
+	// err will mean there is an unexpected response from ES Server
 	err := json.Unmarshal([]byte(b), &data)
 	if err != nil {
 		fmt.Println(err.Error())
@@ -200,8 +202,6 @@ func VersionCheck(b []byte, v string) (bool, string) {
 	if data.Version.Number[0:1] == v {
 		return true, data.Version.Number[0:1]
 	} else {
-		// p := CustomPrint()
-		// fmt.Printf("\n%v\nElastic Search Version mismatch:\n Version specified in CP is %v\nWhile ES instance returns: %v\n%v", p.Stars, v, data.Version.Number[0:1], p.Stars)
 		return false, data.Version.Number[0:1]
 	}
 
