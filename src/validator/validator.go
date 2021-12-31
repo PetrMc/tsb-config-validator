@@ -13,36 +13,36 @@ import (
 	"github.com/PetrMc/tsb-config-validator/src/collector"
 )
 
-func BruteForce(cr *collector.ES, c collector.CPTelemetryStore, prt []string) {
+// func BruteForce(cr *collector.ES, c collector.CPTelemetryStore, prt []string) {
 
-	var r *http.Response
-	var b []byte
-	tconn := c
+// 	var r *http.Response
+// 	var b []byte
+// 	tconn := c
 
-	p := CustomPrint()
+// 	p := CustomPrint()
 
-	// prt := []string{"http", "https"}
-	crt := []bool{true, false}
+// 	// prt := []string{"http", "https"}
+// 	crt := []bool{true, false}
 
-	for _, i := range prt {
-		for _, ss := range crt {
+// 	for _, i := range prt {
+// 		for _, ss := range crt {
 
-			if i != c.Protocol || ss != c.SelfSigned {
+// 			if i != c.Protocol || ss != c.SelfSigned {
 
-				tconn.Protocol = i
-				tconn.SelfSigned = ss
-				fmt.Printf("\n%v\nTrying the following combination:\nHost - %v | Port - %v | Protocol - %v | Selfsigned - %v \n", p.Stars, tconn.Host, tconn.Port, tconn.Protocol, tconn.SelfSigned)
-				r, b = MPCheck(cr, &tconn)
-				fmt.Printf("Response status:%v\n", r.Status)
-			}
-			if Codes(tconn, r, b, false) {
-				return
-			}
-			tconn = c
+// 				tconn.Protocol = i
+// 				tconn.SelfSigned = ss
+// 				fmt.Printf("\n%v\nTrying the following combination:\nHost - %v | Port - %v | Protocol - %v | Selfsigned - %v \n", p.Stars, tconn.Host, tconn.Port, tconn.Protocol, tconn.SelfSigned)
+// 				r, b = MPCheck(cr, &tconn)
+// 				fmt.Printf("Response status:%v\n", r.Status)
+// 			}
+// 			if Codes(tconn, r, b, false) {
+// 				return
+// 			}
+// 			tconn = c
 
-		}
-	}
-}
+// 		}
+// 	}
+// }
 
 func PasswdCheck(cr *collector.ES) {
 
@@ -73,32 +73,72 @@ func PasswdCheck(cr *collector.ES) {
 
 }
 
-func CheckFrontEnvoy(cr *collector.ES, c *collector.CPTelemetryStore, t string) (*http.Response, []byte) {
+func ESCheck(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool) (*http.Response, []byte) {
 	var req *http.Request
 	var resp *http.Response
 	var client *http.Client
 	var tc *tls.Config
 	var path string
 	var err error
+	var b []byte
 
 	pool := x509.NewCertPool()
+	p := CustomPrint()
 
-	path = "https://" + c.Host + ":" + c.Port
+	fmt.Printf("\nEstablishing connection... ")
+	// if len(cr.Cert) != 0 {
+	// 	if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
+	// 		fmt.Println("Failed to append cert")
+	// 		tc = &tls.Config{RootCAs: pool}
+	// 	}
+	// } else {
+	// 	fmt.Printf("\"es-certs\" doesn't have the expected certificate (or the secret doesn't exist at all)... Trying connectivity using Public PKI\n")
+	// 	tc = &tls.Config{InsecureSkipVerify: true}
+	// }
 
-	fmt.Printf("\nEstablishing connection...\n")
-	if len(cr.Cert) != 0 {
-		if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
-			fmt.Println("Failed to append cert")
-			tc = &tls.Config{RootCAs: pool}
-		}
+	if c.Protocol == "http" {
+		fmt.Printf("Trying PLAIN-TEXT connection to ES...\n")
+		tr := http.DefaultTransport.(*http.Transport).Clone()
+		client = &http.Client{Transport: tr}
 	} else {
-		fmt.Printf("\"es-certs\" doesn't have the expected certificate (or the secret doesn't exist at all)... Trying connectivity using Public PKI\n")
-		tc = &tls.Config{InsecureSkipVerify: true}
+		fmt.Printf("Trying ENCRYPTED connection to ES\n")
+		if len(cr.Cert) != 0 {
+
+			if c.SelfSigned {
+				if !CertCheck(c.Host, c.Port, c.SelfSigned, cr.Cert, true) {
+					// return nil, nil
+				}
+				if IsPulic(cr.Cert) {
+					fmt.Printf("\n%v\nThe server cert is publicly signed -- please change \"SelfSigned\" to \"false\" as currenlty this setting is incorrect\n%v", p.Stars, p.Stars)
+					c.SelfSigned = false
+
+				}
+			}
+			if !c.SelfSigned && !IsPulic(cr.Cert) {
+				fmt.Printf("\n%v\nThe server cert is selfsigned -- please change \"SelfSigned\" to \"true\" as currenlty this setting is incorrect\n%v", p.Stars, p.Stars)
+				c.SelfSigned = true
+			}
+			if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
+				fmt.Println("Failed to append cert")
+				tc = &tls.Config{RootCAs: pool}
+
+			}
+		} else {
+			fmt.Printf("\"es-certs\" doesn't have the expected certificate (or the secret doesn't exist at all)... Trying connectivity using Public PKI\n")
+			fmt.Printf("Please create es-cert (per below) or change \"SelfSigned\" to \"false\"")
+			CertCheck(c.Host, c.Port, c.SelfSigned, "", false)
+			return resp, nil
+
+		}
+
 	}
 
+	tc = &tls.Config{InsecureSkipVerify: true}
 	tr := &http.Transport{TLSClientConfig: tc}
 
 	client = &http.Client{Transport: tr}
+
+	path = c.Protocol + "://" + c.Host + ":" + c.Port
 
 	req, err = http.NewRequest("GET", path, nil)
 	if err != nil {
@@ -113,75 +153,76 @@ func CheckFrontEnvoy(cr *collector.ES, c *collector.CPTelemetryStore, t string) 
 	// fmt.Println(t, req.Header)
 
 	resp, err = client.Do(req)
-
 	if err != nil {
 		resp = new(http.Response)
 		resp.Status = err.Error()
-	}
-	b, err := io.ReadAll(resp.Body)
-	// fmt.Printf("\nCbbbbb)\n")
-	// fmt.Println(string(b[:]), resp.Status, resp.Body, b)
-	if err != nil {
-		fmt.Println(err.Error())
-	}
+		b = nil
 
-	return resp, b
-}
-
-func MPCheck(cr *collector.ES, c *collector.CPTelemetryStore) (*http.Response, []byte) {
-	var req *http.Request
-	var resp *http.Response
-	var client *http.Client
-	var path string
-	var err error
-	var b []byte
-
-	pool := x509.NewCertPool()
-
-	path = c.Protocol + "://" + c.Host + ":" + c.Port
-
-	// p := CustomPrint()
-	if c.Protocol == "http" {
-		fmt.Printf("Establishing PLAIN connection per CP Manifest settings\n")
-		tr := http.DefaultTransport.(*http.Transport).Clone()
-		client = &http.Client{Transport: tr}
-	} else {
-		fmt.Printf("Establishing SECURE connection per CP Manifest settings\n")
-		if c.SelfSigned {
-
-			if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
-				fmt.Println("Failed to append cert")
-			}
-
-		}
-		tc := &tls.Config{RootCAs: pool}
-		tr := &http.Transport{TLSClientConfig: tc}
-		client = &http.Client{Transport: tr}
-
-	}
-	req, err = http.NewRequest("GET", path, nil)
-	if err != nil {
-		fmt.Println(err.Error())
-	}
-
-	req.SetBasicAuth(cr.Username, cr.Password)
-
-	resp, err = client.Do(req)
-
-	if err != nil {
-
-		resp = new(http.Response)
-		resp.Status = err.Error()
 	} else {
 		b, err = io.ReadAll(resp.Body)
+
 		if err != nil {
 			fmt.Println(err.Error())
 		}
-
 	}
-	return resp, b
 
+	return resp, b
 }
+
+// func MPCheck(cr *collector.ES, c *collector.CPTelemetryStore) (*http.Response, []byte) {
+// 	var req *http.Request
+// 	var resp *http.Response
+// 	var client *http.Client
+// 	var path string
+// 	var err error
+// 	var b []byte
+
+// 	pool := x509.NewCertPool()
+
+// 	path = c.Protocol + "://" + c.Host + ":" + c.Port
+
+// 	// p := CustomPrint()
+// 	if c.Protocol == "http" {
+// 		fmt.Printf("Establishing PLAIN connection per CP Manifest settings\n")
+// 		tr := http.DefaultTransport.(*http.Transport).Clone()
+// 		client = &http.Client{Transport: tr}
+// 	} else {
+// 		fmt.Printf("Establishing SECURE connection per CP Manifest settings\n")
+// 		if c.SelfSigned {
+
+// 			if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
+// 				fmt.Println("Failed to append cert")
+// 			}
+
+// 		}
+// 		tc := &tls.Config{RootCAs: pool}
+// 		tr := &http.Transport{TLSClientConfig: tc}
+// 		client = &http.Client{Transport: tr}
+
+// 	}
+// 	req, err = http.NewRequest("GET", path, nil)
+// 	if err != nil {
+// 		fmt.Println(err.Error())
+// 	}
+
+// 	req.SetBasicAuth(cr.Username, cr.Password)
+
+// 	resp, err = client.Do(req)
+
+// 	if err != nil {
+
+// 		resp = new(http.Response)
+// 		resp.Status = err.Error()
+// 	} else {
+// 		b, err = io.ReadAll(resp.Body)
+// 		if err != nil {
+// 			fmt.Println(err.Error())
+// 		}
+
+// 	}
+// 	return resp, b
+
+// }
 
 func VersionCheck(b []byte, v string) (bool, string) {
 	// b, err := io.ReadAll(r.Body)

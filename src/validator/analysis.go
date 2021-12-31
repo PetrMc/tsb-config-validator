@@ -20,7 +20,8 @@ func Analysis(c *collector.ES, n collector.CPTelemetryStore, t *collector.TSBCon
 
 		if n.Port == t.Port {
 			fmt.Printf("the port %v is also matches (which is the only allowed config with Front Envoy for Elastic Search)\n", n.Port)
-			MPEndPoint(c, n, tkn)
+
+			Worker(c, n, tkn, false)
 
 		} else {
 			fmt.Printf("*** there seem to be port mismatch (MP - %v and CP - %v while using the same host\n", t.Port, n.Port)
@@ -31,8 +32,10 @@ func Analysis(c *collector.ES, n collector.CPTelemetryStore, t *collector.TSBCon
 	} else {
 		fmt.Printf("CP plane is configured for direct (not via FrontEnvoy) access to ElasticSearch via:\n%vHost: %v\n%vPort %v\n", p.Indent, n.Host, p.Indent, n.Port)
 		fmt.Printf("%vProtocol: %v\n", p.Indent, n.Protocol)
-		SSCheck(n.SelfSigned)
-		Worker(c, n)
+		if n.Protocol != "http" {
+			SSCheck(n.SelfSigned)
+		}
+		Worker(c, n, tkn, false)
 
 	}
 
