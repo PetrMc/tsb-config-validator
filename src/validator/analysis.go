@@ -20,8 +20,7 @@ func Analysis(c *collector.ES, n collector.CPTelemetryStore, t *collector.TSBCon
 
 		if n.Port == t.Port {
 			fmt.Printf("the port %v is also matches (which is the only allowed config with Front Envoy for Elastic Search)\n", n.Port)
-
-			Worker(c, n, tkn, false)
+			Worker(c, n, tkn, true)
 
 		} else {
 			fmt.Printf("*** there seem to be port mismatch (MP - %v and CP - %v while using the same host\n", t.Port, n.Port)

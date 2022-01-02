@@ -74,12 +74,8 @@ func PasswdCheck(cr *collector.ES) {
 }
 
 func ESCheck(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool) (*http.Response, []byte) {
-	var req *http.Request
 	var resp *http.Response
-	var client *http.Client
 	var tc *tls.Config
-	var path string
-	var err error
 	var b []byte
 
 	pool := x509.NewCertPool()
@@ -94,29 +90,45 @@ func ESCheck(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool)
 	// } else {
 	// 	fmt.Printf("\"es-certs\" doesn't have the expected certificate (or the secret doesn't exist at all)... Trying connectivity using Public PKI\n")
 	// 	tc = &tls.Config{InsecureSkipVerify: true}
-	// }
-
+	// }k,
 	if c.Protocol == "http" {
 		fmt.Printf("Trying PLAIN-TEXT connection to ES...\n")
 		tr := http.DefaultTransport.(*http.Transport).Clone()
-		client = &http.Client{Transport: tr}
-	} else {
+		// client := &http.Client{Transport: tr}
+		resp, b = ESDial(cr, c, t, mp, tr)
+
+		if b == nil {
+			c.Protocol = "https"
+		} else {
+			return resp, b
+		}
+	}
+
+	if c.Protocol == "https" {
 		fmt.Printf("Trying ENCRYPTED connection to ES\n")
 		if len(cr.Cert) != 0 {
+			if !CertCheck(c.Host, c.Port, c.SelfSigned, cr.Cert, true) {
 
+				return nil, nil
+			}
 			if c.SelfSigned {
-				if !CertCheck(c.Host, c.Port, c.SelfSigned, cr.Cert, true) {
-					// return nil, nil
-				}
+				// if !CertCheck(c.Host, c.Port, c.SelfSigned, cr.Cert, true) {
+
+				// 	return nil, nil
+				// }
 				if IsPulic(cr.Cert) {
 					fmt.Printf("\n%v\nThe server cert is publicly signed -- please change \"SelfSigned\" to \"false\" as currenlty this setting is incorrect\n%v", p.Stars, p.Stars)
 					c.SelfSigned = false
 
 				}
 			}
+			// fmt.Println(c.SelfSigned)
+			// fmt.Println(IsPulic(cr.Cert))
 			if !c.SelfSigned && !IsPulic(cr.Cert) {
+
 				fmt.Printf("\n%v\nThe server cert is selfsigned -- please change \"SelfSigned\" to \"true\" as currenlty this setting is incorrect\n%v", p.Stars, p.Stars)
 				c.SelfSigned = true
+
 			}
 			if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
 				fmt.Println("Failed to append cert")
@@ -124,19 +136,41 @@ func ESCheck(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool)
 
 			}
 		} else {
-			fmt.Printf("\"es-certs\" doesn't have the expected certificate (or the secret doesn't exist at all)... Trying connectivity using Public PKI\n")
-			fmt.Printf("Please create es-cert (per below) or change \"SelfSigned\" to \"false\"")
-			CertCheck(c.Host, c.Port, c.SelfSigned, "", false)
-			return resp, nil
 
+			tr := http.DefaultTransport.(*http.Transport).Clone()
+			resp, b = ESDial(cr, c, t, mp, tr)
+			// if resp.StatusCode == 0 {
+
+			// 	return resp, b
+			// } else {
+			fmt.Printf("\"es-certs\" doesn't have the expected certificate (or the secret doesn't exist at all)... ")
+			if resp.StatusCode != 0 {
+				fmt.Printf("Trying connectivity using Public PKI\nPlease create es-cert (per below) or change \"SelfSigned\" to \"false\"")
+				CertCheck(c.Host, c.Port, c.SelfSigned, "", false)
+				return resp, nil
+			}
 		}
 
 	}
-
 	tc = &tls.Config{InsecureSkipVerify: true}
-	tr := &http.Transport{TLSClientConfig: tc}
+	tc = &tls.Config{RootCAs: pool}
 
-	client = &http.Client{Transport: tr}
+	tr := &http.Transport{TLSClientConfig: tc}
+	return ESDial(cr, c, t, mp, tr)
+}
+
+func ESDial(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool, tr *http.Transport) (*http.Response, []byte) {
+
+	var req *http.Request
+	var resp *http.Response
+	var path string
+	var err error
+	var b []byte
+
+	// tc = &tls.Config{InsecureSkipVerify: true}
+	// tr := &http.Transport{TLSClientConfig: tc}
+
+	client := &http.Client{Transport: tr}
 
 	path = c.Protocol + "://" + c.Host + ":" + c.Port
 
@@ -150,9 +184,10 @@ func ESCheck(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool)
 	req.Header.Set("tsb-route-target", "elasticsearch")
 	req.Header.Set("x-tetrate-token", t)
 
-	// fmt.Println(t, req.Header)
+	// fmt.Println(tr)
 
 	resp, err = client.Do(req)
+	// fmt.Println(resp.Status)
 	if err != nil {
 		resp = new(http.Response)
 		resp.Status = err.Error()

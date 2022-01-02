@@ -13,17 +13,22 @@ func Worker(cred *collector.ES, conn collector.CPTelemetryStore, tkn *collector.
 	// p := CustomPrint()
 	oc := conn
 	if mp {
+		if conn.Protocol == "http" {
+			conn.Protocol = "https"
+			fmt.Printf("\n\"protocol: http\" will not work with FrontEnvoy - testing with \"https\" instead\n")
+		}
+
 		fmt.Printf("\nChecking connection between CP and FrontEnvoy (running in MP)\n")
-		conn.Protocol = "https"
 	} else {
 		fmt.Printf("\nChecking direct connection from CP to ElasticSearch\n")
 	}
 
 	r, b := ESCheck(cred, &conn, tkn.Zipkint, mp)
-	if b == nil {
-		conn.Protocol = "https"
-		r, b = ESCheck(cred, &conn, tkn.Zipkint, mp)
-	}
+	// if b == nil {
+	// 	conn.Protocol = "https"
+	// 	r, b = ESCheck(cred, &conn, tkn.Zipkint, mp)
+	// }
+	// fmt.Printf(r.Status)
 	if r != nil {
 		Codes(conn, oc, r, b, true)
 	}
@@ -51,6 +56,9 @@ func Codes(c collector.CPTelemetryStore, oc collector.CPTelemetryStore, r *http.
 	// fmt.Println(r.StatusCode)
 	switch r.StatusCode {
 
+	// case 0:
+
+	// 	fmt.Printf("\n%v\nNo response from the server. Please review host/port number and firewall settings before trying again\n", p.Stars)
 	case 200:
 		m, v := VersionCheck(b, c.Version)
 
@@ -108,6 +116,9 @@ func Codes(c collector.CPTelemetryStore, oc collector.CPTelemetryStore, r *http.
 	default:
 		if mp {
 			fmt.Printf("\n%v\nResponse status:%v\n%v\nThe settings are not working - currently we don't have a solution for you.\n", p.Stars, r.Status, p.Indent)
+			if r.StatusCode == 503 {
+				fmt.Printf("The suggesion is to check if MP setting working correctly with the Elastic Search\n")
+			}
 		} else {
 			fmt.Printf("\n%v\nResponse status:%v\n%v\nThe settings are not working - the only suggestion is to point CP to Elastic search directly\n", p.Stars, r.Status, p.Indent)
 		}

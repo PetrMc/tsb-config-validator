@@ -27,6 +27,8 @@ func CertCheck(h string, po string, ss bool, k8scert string, x bool) bool {
 	conn, err := tls.Dial("tcp", str, conf)
 	if err != nil {
 		fmt.Printf(err.Error())
+		fmt.Printf("\nNo certificate check can be done against the server per the following: %v.", err.Error())
+		return false
 	}
 
 	if !ss {
@@ -47,10 +49,12 @@ func CertCheck(h string, po string, ss bool, k8scert string, x bool) bool {
 	// 	fmt.Printf(err.Error())
 	// }
 	// }
-	// lastcert := conn.ConnectionState().PeerCertificates[len(conn.ConnectionState().PeerCertificates)-1]
+	// fmt.Printf("conn.ConnectionState().HandshakeComplete: %v\n", conn.ConnectionState().HandshakeComplete)
+	lastcert := conn.ConnectionState().PeerCertificates[len(conn.ConnectionState().PeerCertificates)-1]
 	err = pem.Encode(&cacert, &pem.Block{
 		Type:  "CERTIFICATE",
-		Bytes: conn.ConnectionState().PeerCertificates[len(conn.ConnectionState().PeerCertificates)-1].Raw,
+		Bytes: lastcert.Raw,
+		// Bytes: conn.ConnectionState().PeerCertificates[len(conn.ConnectionState().PeerCertificates)-1].Raw,
 	})
 	// err := pem.Encode(&b, &pem.Block{
 	// 	Type:  "CERTIFICATE",
@@ -68,6 +72,25 @@ func IsMatch(srv string, k8s string, x bool) bool {
 	var err error
 	p := CustomPrint()
 	// fmt.Println(srv, k8s)
+	// if !IsCA(k8s) {
+	// 	fmt.Printf("\nThe certificate stored in in \"es-certs\" in \"istio-system\" is not a CA")
+	// 	if !IsCA(srv) {
+	// 		fmt.Printf("Can't obtain CA cert from the server - please obtain CA cert manually")
+	// 		return false
+	// 	} else {
+	// 		return true
+	// 	}
+	// }
+	if !IsCA(srv) {
+		fmt.Printf("\nCan't obtain CA cert from the server\n")
+		if IsCA(k8s) {
+			fmt.Printf("\nThe certificate stored in \"es-certs\" in \"istio-system\" is a CA cert will try to use it\n")
+			return true
+		} else {
+			fmt.Printf("\nThe certificate stored in \"es-certs\" in \"istio-system\" is not a CA\nYou have to obtain it manually")
+			return false
+		}
+	}
 	if srv != k8s {
 		match = false
 		if x {
@@ -107,7 +130,28 @@ func IsPulic(k8scert string) bool {
 	if err != nil {
 		panic("failed to parse certificate: " + err.Error())
 	}
-	if len(cert.AuthorityKeyId) != 0 {
+	if len(cert.AuthorityKeyId) != 0 && !bytes.Equal(cert.AuthorityKeyId, cert.SubjectKeyId) {
+
+		p = true
+
+	}
+	//) ntln(cert.AuthorityKeyId)
+	return p
+}
+
+func IsCA(k8scert string) bool {
+	block, _ := pem.Decode([]byte(k8scert))
+	p := false
+	if block == nil {
+		panic("failed to parse certificate PEM")
+
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		panic("failed to parse certificate: " + err.Error())
+	}
+	if cert.IsCA {
 		p = true
 
 	}
