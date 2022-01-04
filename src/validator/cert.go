@@ -9,68 +9,102 @@ import (
 	"os"
 )
 
-func CertCheck(h string, po string, ss bool, k8scert string, x bool) bool {
+func SRVCert(h string, po string) (bool, string) {
 
 	var conf *tls.Config
-	// pool := x509.NewCertPool()
-
+	var cacert bytes.Buffer
 	str := h + ":" + po
-	// if ok := pool.AppendCertsFromPEM([]byte(k8scert)); !ok {
-	// 	fmt.Println("Failed to append cert")
-	// }
+
 	conf = &tls.Config{
 		InsecureSkipVerify: true,
-		// InsecureSkipVerify: false,
-		// RootCAs:            pool,
 	}
 
 	conn, err := tls.Dial("tcp", str, conf)
 	if err != nil {
 		fmt.Printf(err.Error())
 		fmt.Printf("\nNo certificate check can be done against the server per the following: %v.", err.Error())
-		return false
+		return false, ""
 	}
 
-	if !ss {
-		err = conn.VerifyHostname(h)
-		if err != nil {
-			fmt.Printf("Hostname doesn't match with certificate: " + err.Error())
-		}
-	}
-
-	// fmt.Println(conn.ConnectionState().PeerCertificates)
-	var cacert bytes.Buffer
-	// for _, cert := range conn.ConnectionState().PeerCertificates {
-	// err := pem.Encode(&b, &pem.Block{
-	// 	Type:  "CERTIFICATE",
-	// 	Bytes: cert.Raw,
-	// })
-	// if err != nil {
-	// 	fmt.Printf(err.Error())
-	// }
-	// }
-	// fmt.Printf("conn.ConnectionState().HandshakeComplete: %v\n", conn.ConnectionState().HandshakeComplete)
 	lastcert := conn.ConnectionState().PeerCertificates[len(conn.ConnectionState().PeerCertificates)-1]
 	err = pem.Encode(&cacert, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: lastcert.Raw,
-		// Bytes: conn.ConnectionState().PeerCertificates[len(conn.ConnectionState().PeerCertificates)-1].Raw,
 	})
-	// err := pem.Encode(&b, &pem.Block{
-	// 	Type:  "CERTIFICATE",
-	// 	Bytes: cert.Raw,
-	// })
 	if err != nil {
 		fmt.Printf(err.Error())
+		return false, ""
+
 	}
-	// fmt.Println(k8scert)
-	return IsMatch(cacert.String(), k8scert, x)
+	return true, cacert.String()
 }
-func IsMatch(srv string, k8s string, x bool) bool {
-	var m string
+
+// func CertCheckOld(h string, po string, ss bool, k8scert string, x bool) bool {
+
+// 	var conf *tls.Config
+// 	// pool := x509.NewCertPool()
+
+// 	str := h + ":" + po
+// 	// if ok := pool.AppendCertsFromPEM([]byte(k8scert)); !ok {
+// 	// 	fmt.Println("Failed to append cert")
+// 	// }
+// 	conf = &tls.Config{
+// 		InsecureSkipVerify: true,
+// 		// InsecureSkipVerify: false,
+// 		// RootCAs:            pool,
+// 	}
+
+// 	conn, err := tls.Dial("tcp", str, conf)
+// 	if err != nil {
+// 		fmt.Printf(err.Error())
+// 		fmt.Printf("\nNo certificate check can be done against the server per the following: %v.", err.Error())
+// 		return false
+// 	}
+
+// 	// if !ss {
+// 	// 	err = conn.VerifyHostname(h)
+// 	// 	if err != nil {
+// 	// 		fmt.Printf("Hostname doesn't match with certificate: " + err.Error())
+// 	// 	}
+// 	// }
+
+// 	// fmt.Println(conn.ConnectionState().PeerCertificates)
+// 	var cacert bytes.Buffer
+// 	// for _, cert := range conn.ConnectionState().PeerCertificates {
+// 	// err := pem.Encode(&b, &pem.Block{
+// 	// 	Type:  "CERTIFICATE",
+// 	// 	Bytes: cert.Raw,
+// 	// })
+// 	// if err != nil {
+// 	// 	fmt.Printf(err.Error())
+// 	// }
+// 	// }
+// 	// fmt.Printf("conn.ConnectionState().HandshakeComplete: %v\n", conn.ConnectionState().HandshakeComplete)
+// 	lastcert := conn.ConnectionState().PeerCertificates[len(conn.ConnectionState().PeerCertificates)-1]
+// 	err = pem.Encode(&cacert, &pem.Block{
+// 		Type:  "CERTIFICATE",
+// 		Bytes: lastcert.Raw,
+// 		// Bytes: conn.ConnectionState().PeerCertificates[len(conn.ConnectionState().PeerCertificates)-1].Raw,
+// 	})
+// 	// err := pem.Encode(&b, &pem.Block{
+// 	// 	Type:  "CERTIFICATE",
+// 	// 	Bytes: cert.Raw,
+// 	// })
+// 	if err != nil {
+// 		fmt.Printf(err.Error())
+// 	}
+// 	// fmt.Println(k8scert)
+// 	if IsPulic(cacert.String()) {
+// 		return IsMatch(cacert.String(), k8scert, x)
+// 	} else {
+
+// 	}
+// }
+func IsMatch(srv string, k8s string) bool {
+	// var m string
 	var match bool
-	var err error
-	p := CustomPrint()
+	// var err error
+	// p := CustomPrint()
 	// fmt.Println(srv, k8s)
 	// if !IsCA(k8s) {
 	// 	fmt.Printf("\nThe certificate stored in in \"es-certs\" in \"istio-system\" is not a CA")
@@ -92,23 +126,23 @@ func IsMatch(srv string, k8s string, x bool) bool {
 		}
 	}
 	if srv != k8s {
-		match = false
-		if x {
-			m = "\n" + p.Stars + "\nThe certificates don't match\n"
-		} else {
-			// m = "\nThe certificate in \"es-cert\" secret (\"istio-system\" namespace) doesn't exist\n"
-			m = ""
-		}
-		fmt.Println(m)
-		fn := "/tmp/ca.crt"
-		CASave(srv, fn)
-		if err != nil {
-			cmd := p.Indent + "kubectl -n istio-system get secret es-certs -o yaml > /tmp/es-certs-backup.yaml\n" + p.Indent + "kubectl -n istio-system delete secret es-certs\n" + p.Indent + "kubectl -n istio-system create secret generic es-certs  --from-file=ca.crt=ca.crt\n"
-			fmt.Printf("\nThe below cert needs to be added to k8s cluster\nPlease copy to ca.crt file and then run the folloing command\n%v\n%v\n", cmd, srv)
-		} else {
-			cmd := p.Indent + "kubectl -n istio-system get secret es-certs -o yaml > /tmp/es-certs-backup.yaml\n" + p.Indent + "kubectl -n istio-system delete secret es-certs\n" + p.Indent + "kubectl -n istio-system create secret generic es-certs  --from-file=ca.crt=" + fn + "\n"
-			fmt.Printf("\nPlease run the commands below to re-created the secret from to %v file and then run the folloing command\n%v\n", fn, cmd)
-		}
+		// match = false
+		// if x {
+		// 	m = "\n" + p.Stars + "\nThe certificates don't match\n"
+		// } else {
+		// 	// m = "\nThe certificate in \"es-cert\" secret (\"istio-system\" namespace) doesn't exist\n"
+		// 	m = ""
+		// }
+		// fmt.Println(m)
+		// fn := "/tmp/ca.crt"
+		// CASave(srv, fn)
+		// if err != nil {
+		// 	cmd := p.Indent + "kubectl -n istio-system get secret es-certs -o yaml > /tmp/es-certs-backup.yaml\n" + p.Indent + "kubectl -n istio-system delete secret es-certs\n" + p.Indent + "kubectl -n istio-system create secret generic es-certs  --from-file=ca.crt=ca.crt\n"
+		// 	fmt.Printf("\nThe below cert needs to be added to k8s cluster\nPlease copy to ca.crt file and then run the folloing command\n%v\n%v\n", cmd, srv)
+		// } else {
+		// 	cmd := p.Indent + "kubectl -n istio-system get secret es-certs -o yaml > /tmp/es-certs-backup.yaml\n" + p.Indent + "kubectl -n istio-system delete secret es-certs\n" + p.Indent + "kubectl -n istio-system create secret generic es-certs  --from-file=ca.crt=" + fn + "\n"
+		// 	fmt.Printf("\nPlease run the commands below to re-created the secret from to %v file and then run the folloing command\n%v\n", fn, cmd)
+		// }
 	} else {
 		match = true
 	}
@@ -118,8 +152,8 @@ func IsMatch(srv string, k8s string, x bool) bool {
 	return match
 }
 
-func IsPulic(k8scert string) bool {
-	block, _ := pem.Decode([]byte(k8scert))
+func IsPulic(uc string) bool {
+	block, _ := pem.Decode([]byte(uc))
 	p := false
 	if block == nil {
 		panic("failed to parse certificate PEM")

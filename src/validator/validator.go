@@ -82,82 +82,180 @@ func ESCheck(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool)
 	p := CustomPrint()
 
 	fmt.Printf("\nEstablishing connection... ")
-	// if len(cr.Cert) != 0 {
-	// 	if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
-	// 		fmt.Println("Failed to append cert")
-	// 		tc = &tls.Config{RootCAs: pool}
-	// 	}
-	// } else {
-	// 	fmt.Printf("\"es-certs\" doesn't have the expected certificate (or the secret doesn't exist at all)... Trying connectivity using Public PKI\n")
-	// 	tc = &tls.Config{InsecureSkipVerify: true}
-	// }k,
-	if c.Protocol == "http" {
-		fmt.Printf("Trying PLAIN-TEXT connection to ES...\n")
-		tr := http.DefaultTransport.(*http.Transport).Clone()
-		// client := &http.Client{Transport: tr}
-		resp, b = ESDial(cr, c, t, mp, tr)
 
+	tr := http.DefaultTransport.(*http.Transport).Clone()
+
+	if !mp {
+		fmt.Printf("Trying PLAIN-TEXT connection to ES...\n")
+		c.Protocol = "http"
+		resp, b = ESDial(cr, c, t, mp, tr)
+		fmt.Println(resp.Status)
 		if b == nil {
+			fmt.Printf("Can't establish plain HTTP connection, will try HTTPS")
 			c.Protocol = "https"
 		} else {
 			return resp, b
 		}
+	} else {
+		fmt.Printf("MP will only work with HTTPS skipping HTTP\n")
+		c.Protocol = "https"
+
 	}
 
-	if c.Protocol == "https" {
-		fmt.Printf("Trying ENCRYPTED connection to ES\n")
-		if len(cr.Cert) != 0 {
-			if !CertCheck(c.Host, c.Port, c.SelfSigned, cr.Cert, true) {
-
-				return nil, nil
-			}
+	fmt.Printf("\nTrying ENCRYPTED connection to ES\n")
+	srv, srvcert := SRVCert(c.Host, c.Port)
+	if srv {
+		if IsPulic(srvcert) {
+			// is es-cert needed?
 			if c.SelfSigned {
-				// if !CertCheck(c.Host, c.Port, c.SelfSigned, cr.Cert, true) {
-
-				// 	return nil, nil
-				// }
-				if IsPulic(cr.Cert) {
-					fmt.Printf("\n%v\nThe server cert is publicly signed -- please change \"SelfSigned\" to \"false\" as currenlty this setting is incorrect\n%v", p.Stars, p.Stars)
-					c.SelfSigned = false
-
-				}
+				fmt.Printf("\nThe server presents the publicly signed certificate - the current CP settings states that \"selfSigned: true\" while should be set to \"false\" (testing with \"false\" setting)\n")
+				c.SelfSigned = false
 			}
-			// fmt.Println(c.SelfSigned)
-			// fmt.Println(IsPulic(cr.Cert))
-			if !c.SelfSigned && !IsPulic(cr.Cert) {
+			// tc = &tls.Config{InsecureSkipVerify: true}
+			// tr := http.DefaultTransport.(*http.Transport).Clone()
+			// resp, b = ESDial(cr, c, t, mp, tr)
 
-				fmt.Printf("\n%v\nThe server cert is selfsigned -- please change \"SelfSigned\" to \"true\" as currenlty this setting is incorrect\n%v", p.Stars, p.Stars)
-				c.SelfSigned = true
+			// return resp, b
 
-			}
-			if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
-				fmt.Println("Failed to append cert")
-				tc = &tls.Config{RootCAs: pool}
-
-			}
 		} else {
 
-			tr := http.DefaultTransport.(*http.Transport).Clone()
-			resp, b = ESDial(cr, c, t, mp, tr)
-			// if resp.StatusCode == 0 {
+			if !c.SelfSigned {
+				fmt.Printf("\nThe server presents the self-signed certificate - the current CP settings states that \"selfSigned: false\" while should be set to \"true\" (testing with \"true\" setting)\n")
+				c.SelfSigned = true
+			}
+			if len(cr.Cert) == 0 {
+				if IsCA(srvcert) {
+					fn := "/tmp/ca.crt"
+					CASave(srvcert, fn)
 
-			// 	return resp, b
-			// } else {
-			fmt.Printf("\"es-certs\" doesn't have the expected certificate (or the secret doesn't exist at all)... ")
-			if resp.StatusCode != 0 {
-				fmt.Printf("Trying connectivity using Public PKI\nPlease create es-cert (per below) or change \"SelfSigned\" to \"false\"")
-				CertCheck(c.Host, c.Port, c.SelfSigned, "", false)
-				return resp, nil
+					cmd := p.Indent + "kubectl -n istio-system get secret es-certs -o yaml > /tmp/es-certs-backup.yaml\n" + p.Indent + "kubectl -n istio-system delete secret es-certs\n" + p.Indent + "kubectl -n istio-system create secret generic es-certs  --from-file=ca.crt=" + fn + "\n"
+					fmt.Printf("\nThere in no certificate stored in \"es-certs\" in \"istio-system\" however the server doesn't has CA cert in its chain\nPlease create it in you CP cluster per:\n%v", cmd)
+				} else {
+					cmd := p.Indent + "kubectl -n istio-system get secret es-certs -o yaml > /tmp/es-certs-backup.yaml\n" + p.Indent + "kubectl -n istio-system delete secret es-certs\n" + p.Indent + "kubectl -n istio-system create secret generic es-certs  --from-file=ca.crt=<file that contains CA cert>\n"
+					fmt.Printf("\nThere in no certificate stored in \"es-certs\" in \"istio-system\" and the server doesn't have CA cert in its chain\nYou have to obtain the CA cert *manually* and add it to the secret\nper:\n%v", cmd)
+				}
+				return nil, nil
+			} else {
+				if IsCA(srvcert) {
+					fmt.Printf("\nThe server has CA cert in its chain")
+
+					if IsMatch(srvcert, cr.Cert) {
+						fmt.Printf(" and there in a matching certificate stored in \"es-certs\" in \"istio-system\" \nWill try to call the MP using the settings")
+					} else {
+						fn := "/tmp/ca.crt"
+						cmd := p.Indent + "kubectl -n istio-system get secret es-certs -o yaml > /tmp/es-certs-backup.yaml\n" + p.Indent + "kubectl -n istio-system delete secret es-certs\n" + p.Indent + "kubectl -n istio-system create secret generic es-certs  --from-file=ca.crt=" + fn + "\n"
+						fmt.Printf(" however the certificate stored in \"es-certs\" in \"istio-system\" doesn't match that chain\nPlease create it in you CP cluster per:\n%v", cmd)
+						CASave(srvcert, fn)
+						return nil, nil
+					}
+				} else {
+					cmd := p.Indent + "kubectl -n istio-system get secret es-certs -o yaml > /tmp/es-certs-backup.yaml\n" + p.Indent + "kubectl -n istio-system delete secret es-certs\n" + p.Indent + "kubectl -n istio-system create secret generic es-certs  --from-file=ca.crt=<file that contains CA cert>\n"
+					fmt.Printf("\nValidating connection using the certificate stored in \"es-certs\" in \"istio-system\" - if the settings don't work - you will have to obtain the CA cert *manually* and add it to the secret\nper:\n%v", cmd)
+				}
 			}
 		}
-
+	} else {
+		return nil, nil
 	}
 	tc = &tls.Config{InsecureSkipVerify: true}
-	tc = &tls.Config{RootCAs: pool}
 
-	tr := &http.Transport{TLSClientConfig: tc}
+	if c.SelfSigned {
+		tc = &tls.Config{RootCAs: pool}
+		if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
+			fmt.Println("Failed to append cert")
+			tc = &tls.Config{RootCAs: pool}
+		}
+	}
+
+	tr = &http.Transport{TLSClientConfig: tc}
 	return ESDial(cr, c, t, mp, tr)
 }
+
+// func ESCheckOld(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool) (*http.Response, []byte) {
+// 	var resp *http.Response
+// 	var tc *tls.Config
+// 	var b []byte
+
+// 	pool := x509.NewCertPool()
+// 	p := CustomPrint()
+
+// 	fmt.Printf("\nEstablishing connection... ")
+// 	// if len(cr.Cert) != 0 {
+// 	// 	if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
+// 	// 		fmt.Println("Failed to append cert")
+// 	// 		tc = &tls.Config{RootCAs: pool}
+// 	// 	}
+// 	// } else {
+// 	// 	fmt.Printf("\"es-certs\" doesn't have the expected certificate (or the secret doesn't exist at all)... Trying connectivity using Public PKI\n")
+// 	// 	tc = &tls.Config{InsecureSkipVerify: true}
+// 	// }k,
+// 	if c.Protocol == "http" {
+// 		fmt.Printf("Trying PLAIN-TEXT connection to ES...\n")
+// 		tr := http.DefaultTransport.(*http.Transport).Clone()
+// 		// client := &http.Client{Transport: tr}
+// 		resp, b = ESDial(cr, c, t, mp, tr)
+
+// 		if b == nil {
+// 			c.Protocol = "https"
+// 		} else {
+// 			return resp, b
+// 		}
+// 	}
+
+// 	if c.Protocol == "https" {
+// 		fmt.Printf("Trying ENCRYPTED connection to ES\n")
+// 		if len(cr.Cert) != 0 {
+// 			if !CertCheck(c.Host, c.Port, c.SelfSigned, cr.Cert, true) {
+
+// 				return nil, nil
+// 			}
+// 			if c.SelfSigned {
+// 				// if !CertCheck(c.Host, c.Port, c.SelfSigned, cr.Cert, true) {
+
+// 				// 	return nil, nil
+// 				// }
+// 				if IsPulic(cr.Cert) {
+// 					fmt.Printf("\n%v\nThe server cert is publicly signed -- please change \"SelfSigned\" to \"false\" as currenlty this setting is incorrect\n%v", p.Stars, p.Stars)
+// 					c.SelfSigned = false
+
+// 				}
+// 			}
+// 			// fmt.Println(c.SelfSigned)
+// 			// fmt.Println(IsPulic(cr.Cert))
+// 			if !c.SelfSigned && !IsPulic(cr.Cert) {
+
+// 				fmt.Printf("\n%v\nThe server cert is selfsigned -- please change \"SelfSigned\" to \"true\" as currenlty this setting is incorrect\n%v", p.Stars, p.Stars)
+// 				c.SelfSigned = true
+
+// 			}
+// 			if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
+// 				fmt.Println("Failed to append cert")
+// 				tc = &tls.Config{RootCAs: pool}
+
+// 			}
+// 		} else {
+
+// 			tr := http.DefaultTransport.(*http.Transport).Clone()
+// 			resp, b = ESDial(cr, c, t, mp, tr)
+// 			// if resp.StatusCode == 0 {
+
+// 			// 	return resp, b
+// 			// } else {
+// 			fmt.Printf("\"es-certs\" doesn't have the expected certificate (or the secret doesn't exist at all)... ")
+// 			if resp.StatusCode != 0 {
+// 				fmt.Printf("Trying connectivity using Public PKI\nPlease create es-cert (per below) or change \"SelfSigned\" to \"false\"")
+// 				CertCheck(c.Host, c.Port, c.SelfSigned, "", false)
+// 				return resp, nil
+// 			}
+// 		}
+
+// 	}
+// 	tc = &tls.Config{InsecureSkipVerify: true}
+// 	tc = &tls.Config{RootCAs: pool}
+
+// 	tr := &http.Transport{TLSClientConfig: tc}
+// 	return ESDial(cr, c, t, mp, tr)
+// }
 
 func ESDial(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool, tr *http.Transport) (*http.Response, []byte) {
 
@@ -184,10 +282,10 @@ func ESDial(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool, 
 	req.Header.Set("tsb-route-target", "elasticsearch")
 	req.Header.Set("x-tetrate-token", t)
 
-	// fmt.Println(tr)
+	// fmt.Println(req)
 
 	resp, err = client.Do(req)
-	// fmt.Println(resp.Status)
+
 	if err != nil {
 		resp = new(http.Response)
 		resp.Status = err.Error()

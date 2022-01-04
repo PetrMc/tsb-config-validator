@@ -10,13 +10,13 @@ import (
 
 func Worker(cred *collector.ES, conn collector.CPTelemetryStore, tkn *collector.TSBTokens, mp bool) {
 
-	// p := CustomPrint()
+	p := CustomPrint()
 	oc := conn
 	if mp {
-		if conn.Protocol == "http" {
-			conn.Protocol = "https"
-			fmt.Printf("\n\"protocol: http\" will not work with FrontEnvoy - testing with \"https\" instead\n")
-		}
+		// if conn.Protocol == "http" {
+		// 	conn.Protocol = "https"
+		// 	fmt.Printf("\n\"protocol: http\" will not work with FrontEnvoy - testing with \"https\" instead\n")
+		// }
 
 		fmt.Printf("\nChecking connection between CP and FrontEnvoy (running in MP)\n")
 	} else {
@@ -29,8 +29,19 @@ func Worker(cred *collector.ES, conn collector.CPTelemetryStore, tkn *collector.
 	// 	r, b = ESCheck(cred, &conn, tkn.Zipkint, mp)
 	// }
 	// fmt.Printf(r.Status)
+	var header [2]string
+	header[0] = " -H \"tsb-route-target: elasticsearch\" "
+	header[1] = " -H \"x-tetrate-token: " + tkn.Zipkint + "\" "
+
+	m := "curl -u " + cred.Username + ":" + cred.Password + " " + oc.Protocol + "://" + oc.Host + ":" + oc.Port + header[0] + header[1]
+
 	if r != nil {
 		Codes(conn, oc, r, b, true)
+		fmt.Printf("\n%v\nFor debug proposes you can use \"curl\" command per below:\n%v\n", p.Stars, m)
+	} else {
+		m := "curl -u " + cred.Username + ":" + cred.Password + " " + oc.Protocol + "://" + oc.Host + ":" + oc.Port
+		fmt.Printf("\n%v\nNo reponse received from the server - test with \"curl\" command could provide some networking data:\n%v\n", p.Stars, m)
+
 	}
 
 }
@@ -65,7 +76,8 @@ func Codes(c collector.CPTelemetryStore, oc collector.CPTelemetryStore, r *http.
 		if v != "0" {
 
 			if oc.Protocol == c.Protocol && oc.SelfSigned == c.SelfSigned && m {
-				fmt.Printf("\n%v\nNo problems detected - your config works as expected", p.Stars)
+				fmt.Printf("\n%v\nNo problems detected - your config works as expected (restarting \"oap-deployment\" and \"zipkin\" pods might be required", p.Stars)
+				fmt.Printf("\nPlease note that because the private key is required to check signature of the tokens, \nif oap is still restarting, then re-issuing the tokens could be the next step\n(to issue new tokens:\n%v- connect to the kubernes cluster that runs TSB Management plane\n%v- use tctl command \"tctl install manifest control-plane-secrets --cluster <cluster name>\" to generate the new set of tokens\n%v- save tokens to a file and apply in CP cluster", p.Indent, p.Indent, p.Indent)
 			} else {
 				fmt.Println(p.Stars)
 				if oc.Protocol != c.Protocol {
@@ -73,7 +85,7 @@ func Codes(c collector.CPTelemetryStore, oc collector.CPTelemetryStore, r *http.
 
 				}
 				if oc.SelfSigned != c.SelfSigned {
-					fmt.Printf("\n\"SelfSigned\" parameter mismatch found - Current setting - %v Correct setting - %v", oc.Protocol, c.Protocol)
+					fmt.Printf("\n\"SelfSigned\" parameter mismatch found - Current setting - %v Correct setting - %v", oc.SelfSigned, c.SelfSigned)
 				}
 				if !m {
 					fmt.Printf("\n%v\nElastic Search Version mismatch found - Current setting: %v however ES instance returns: %v\n", p.Indent, c.Version, v)
@@ -113,14 +125,21 @@ func Codes(c collector.CPTelemetryStore, oc collector.CPTelemetryStore, r *http.
 		fmt.Printf("\nPlease fix and rerun if needed\n")
 		return true
 
-	default:
+	case 503:
+		fmt.Printf("\n%v\nResponse status:%v\n%v\nThe settings are not working - currently we don't have a solution for you.\n", p.Stars, r.Status, p.Indent)
 		if mp {
-			fmt.Printf("\n%v\nResponse status:%v\n%v\nThe settings are not working - currently we don't have a solution for you.\n", p.Stars, r.Status, p.Indent)
-			if r.StatusCode == 503 {
-				fmt.Printf("The suggesion is to check if MP setting working correctly with the Elastic Search\n")
-			}
+			fmt.Printf("Below are additional pointers to validated:")
+			fmt.Printf("\n%v- check if MP setting working correctly with the Elastic Search", p.Indent)
+			fmt.Printf("\n%v- point CP to Elastic search directly\n", p.Indent)
 		} else {
-			fmt.Printf("\n%v\nResponse status:%v\n%v\nThe settings are not working - the only suggestion is to point CP to Elastic search directly\n", p.Stars, r.Status, p.Indent)
+
+		}
+
+	default:
+
+		fmt.Printf("\n%v\nResponse status:%v\n%v\nThe settings are not working - currently we don't have a solution for you.\n", p.Stars, r.Status, p.Indent)
+		if mp {
+			fmt.Printf("Pointing CP to Elastic search directly (instead of MP FrontEnvoy) can provide some additional data.\n")
 		}
 
 	}
