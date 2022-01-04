@@ -7,184 +7,174 @@ import (
 	"encoding/pem"
 	"fmt"
 	"os"
+	"time"
 )
+
+// SRVCert function uses crypto libraries to reach ElasticSearch
+// tries to retrieve and decode the certificate presented by the
+// server. If successful, returns true and the certificate, otherwise
+// returns false and empty string
 
 func SRVCert(h string, po string) (bool, string) {
 
+	// building default config
 	var conf *tls.Config
+	// buffer is used for the cert decoding step
 	var cacert bytes.Buffer
+
+	// str is used as the address fot TLS call
 	str := h + ":" + po
 
+	// the goal here is to receive any certificate for analysis
+	// security is not a concern here. It's the operator's
+	// responsibility to make sure the setup is secure.
 	conf = &tls.Config{
 		InsecureSkipVerify: true,
 	}
 
+	// making a simple TCP call to ES Address/port from the function input parameters
 	conn, err := tls.Dial("tcp", str, conf)
+	// if any errors - the function prints the error to the terminal, returns false
+	// and empty string for certificate placeholder
 	if err != nil {
 		fmt.Printf(err.Error())
 		fmt.Printf("\nNo certificate check can be done against the server per the following: %v.", err.Error())
 		return false, ""
 	}
 
+	// the function is interested in last certificate in the chain, as if exists it can be CA cert
+	// that the users can be utilized by the caller to establish trusted connection
 	lastcert := conn.ConnectionState().PeerCertificates[len(conn.ConnectionState().PeerCertificates)-1]
+
+	// the certificate received by tls.Dial requires encoding
 	err = pem.Encode(&cacert, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: lastcert.Raw,
 	})
+
+	// if any errors - the function prints the error to the terminal, returns false
+	// and empty string for certificate placeholder
 	if err != nil {
 		fmt.Printf(err.Error())
 		return false, ""
 
 	}
+
+	// if the call to the server is successful - true (meaning there is a parsable cert presented
+	// by the server) and the last cert in the chain as string are returned by the function
 	return true, cacert.String()
 }
 
-// func CertCheckOld(h string, po string, ss bool, k8scert string, x bool) bool {
+// IsMatch function analyzes the certificate provided as srv variable
+// looks if the certificate is CA. Compares it to certificate from k8s string
+// and if the CA cert is found but not matching k8s - suggest user to update the secret
+// that holds the CA cert (es-certs) in the Kubernetes cluster.
 
-// 	var conf *tls.Config
-// 	// pool := x509.NewCertPool()
-
-// 	str := h + ":" + po
-// 	// if ok := pool.AppendCertsFromPEM([]byte(k8scert)); !ok {
-// 	// 	fmt.Println("Failed to append cert")
-// 	// }
-// 	conf = &tls.Config{
-// 		InsecureSkipVerify: true,
-// 		// InsecureSkipVerify: false,
-// 		// RootCAs:            pool,
-// 	}
-
-// 	conn, err := tls.Dial("tcp", str, conf)
-// 	if err != nil {
-// 		fmt.Printf(err.Error())
-// 		fmt.Printf("\nNo certificate check can be done against the server per the following: %v.", err.Error())
-// 		return false
-// 	}
-
-// 	// if !ss {
-// 	// 	err = conn.VerifyHostname(h)
-// 	// 	if err != nil {
-// 	// 		fmt.Printf("Hostname doesn't match with certificate: " + err.Error())
-// 	// 	}
-// 	// }
-
-// 	// fmt.Println(conn.ConnectionState().PeerCertificates)
-// 	var cacert bytes.Buffer
-// 	// for _, cert := range conn.ConnectionState().PeerCertificates {
-// 	// err := pem.Encode(&b, &pem.Block{
-// 	// 	Type:  "CERTIFICATE",
-// 	// 	Bytes: cert.Raw,
-// 	// })
-// 	// if err != nil {
-// 	// 	fmt.Printf(err.Error())
-// 	// }
-// 	// }
-// 	// fmt.Printf("conn.ConnectionState().HandshakeComplete: %v\n", conn.ConnectionState().HandshakeComplete)
-// 	lastcert := conn.ConnectionState().PeerCertificates[len(conn.ConnectionState().PeerCertificates)-1]
-// 	err = pem.Encode(&cacert, &pem.Block{
-// 		Type:  "CERTIFICATE",
-// 		Bytes: lastcert.Raw,
-// 		// Bytes: conn.ConnectionState().PeerCertificates[len(conn.ConnectionState().PeerCertificates)-1].Raw,
-// 	})
-// 	// err := pem.Encode(&b, &pem.Block{
-// 	// 	Type:  "CERTIFICATE",
-// 	// 	Bytes: cert.Raw,
-// 	// })
-// 	if err != nil {
-// 		fmt.Printf(err.Error())
-// 	}
-// 	// fmt.Println(k8scert)
-// 	if IsPulic(cacert.String()) {
-// 		return IsMatch(cacert.String(), k8scert, x)
-// 	} else {
-
-// 	}
-// }
 func IsMatch(srv string, k8s string) bool {
-	// var m string
+
+	// The result of the function will be "true" - the CA is found and matches K8s secret
+	// or "false" in any other scenario
+
 	var match bool
-	// var err error
-	// p := CustomPrint()
-	// fmt.Println(srv, k8s)
-	// if !IsCA(k8s) {
-	// 	fmt.Printf("\nThe certificate stored in in \"es-certs\" in \"istio-system\" is not a CA")
-	// 	if !IsCA(srv) {
-	// 		fmt.Printf("Can't obtain CA cert from the server - please obtain CA cert manually")
-	// 		return false
-	// 	} else {
-	// 		return true
-	// 	}
-	// }
+
+	// first check if CA is provided by the server, if not there is no point to compare the secrets
 	if !IsCA(srv) {
+
 		fmt.Printf("\nCan't obtain CA cert from the server\n")
+		// if the certificate stored in k8s secret CA - it can be used for testing the connection
 		if IsCA(k8s) {
 			fmt.Printf("\nThe certificate stored in \"es-certs\" in \"istio-system\" is a CA cert will try to use it\n")
+			// to satisfy the higher level logic - the assumption is done that - k8s secret is sufficient to proceed
 			return true
 		} else {
+			// if the certificate stored in es-cert doesn't exist, corrupted or not CA - there is no reason to proceed with additional testing
 			fmt.Printf("\nThe certificate stored in \"es-certs\" in \"istio-system\" is not a CA\nYou have to obtain it manually")
 			return false
 		}
 	}
+
+	// Checking if the server and kubernetes secrets match
 	if srv != k8s {
-		// match = false
-		// if x {
-		// 	m = "\n" + p.Stars + "\nThe certificates don't match\n"
-		// } else {
-		// 	// m = "\nThe certificate in \"es-cert\" secret (\"istio-system\" namespace) doesn't exist\n"
-		// 	m = ""
-		// }
-		// fmt.Println(m)
-		// fn := "/tmp/ca.crt"
-		// CASave(srv, fn)
-		// if err != nil {
-		// 	cmd := p.Indent + "kubectl -n istio-system get secret es-certs -o yaml > /tmp/es-certs-backup.yaml\n" + p.Indent + "kubectl -n istio-system delete secret es-certs\n" + p.Indent + "kubectl -n istio-system create secret generic es-certs  --from-file=ca.crt=ca.crt\n"
-		// 	fmt.Printf("\nThe below cert needs to be added to k8s cluster\nPlease copy to ca.crt file and then run the folloing command\n%v\n%v\n", cmd, srv)
-		// } else {
-		// 	cmd := p.Indent + "kubectl -n istio-system get secret es-certs -o yaml > /tmp/es-certs-backup.yaml\n" + p.Indent + "kubectl -n istio-system delete secret es-certs\n" + p.Indent + "kubectl -n istio-system create secret generic es-certs  --from-file=ca.crt=" + fn + "\n"
-		// 	fmt.Printf("\nPlease run the commands below to re-created the secret from to %v file and then run the folloing command\n%v\n", fn, cmd)
-		// }
+		match = false
 	} else {
 		match = true
 	}
 
-	//  expiry := conn.ConnectionState().PeerCertificates[0].NotAfter
-	//  fmt.Printf("Issuer: %s\nExpiry: %v\n", conn.ConnectionState().PeerCertificates[0].Issuer, expiry.Format(time.RFC850))
 	return match
 }
 
-func IsPulic(uc string) bool {
+// certparse function uses standard approach to get make the certificate readable
+func certparse(uc string) *x509.Certificate {
+
+	// decoded certificate placeholder
 	block, _ := pem.Decode([]byte(uc))
-	p := false
+
+	// panic is not often used in this code - probably needs to be reviewed
 	if block == nil {
 		panic("failed to parse certificate PEM")
-
 	}
 
+	// Parsing the certificate metadata
 	cert, err := x509.ParseCertificate(block.Bytes)
+
 	if err != nil {
 		panic("failed to parse certificate: " + err.Error())
 	}
-	if len(cert.AuthorityKeyId) != 0 && !bytes.Equal(cert.AuthorityKeyId, cert.SubjectKeyId) {
+	return cert
+}
 
-		p = true
+// IsExpired function is to check if the cert is expired
+// not sure where to call it (currently not called) as
+// we only check selfsigned CA while some of public CAs also
+// can expire - i.e. Lets Encrypt CA has expired in Oct 2021
 
+func IsExpired(uc string) bool {
+	exp := false
+	cert := certparse(uc)
+
+	et := cert.NotAfter
+	ct := time.Now()
+	if et.Before(ct) {
+		exp = true
+		fmt.Printf("\nThe certificate seems to expire - Not After states: %v while the current time is %v\n", et.Format(time.RFC850), ct.Format(time.RFC850))
 	}
-	//) ntln(cert.AuthorityKeyId)
+
+	return exp
+}
+
+// IsPublic confirms if the certificate is SelfSigned
+// this is a very important check as it directly correlates
+// with CP Settings and if set incorrectly will not work
+// fortunattely there is a way to automatically confirm that
+
+func IsPublic(uc string) bool {
+
+	// setting the default value
+	p := false
+
+	// getting readable certificate metadata
+	cert := certparse(uc)
+
+	// the certificate is public when (a) it has AuthorityKeyId
+	// and (b) the value is different from cert.SubjectKeyId
+	if len(cert.AuthorityKeyId) != 0 && !bytes.Equal(cert.AuthorityKeyId, cert.SubjectKeyId) {
+		p = true
+	}
+
 	return p
 }
 
+// IsCA function checks if the provided certificate has
+// CA field set to TRUE value
 func IsCA(k8scert string) bool {
-	block, _ := pem.Decode([]byte(k8scert))
+
+	// setting the default value
 	p := false
-	if block == nil {
-		panic("failed to parse certificate PEM")
 
-	}
+	// getting readable certificate metadata
+	cert := certparse(k8scert)
 
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		panic("failed to parse certificate: " + err.Error())
-	}
+	// cheking the single certificate field value
 	if cert.IsCA {
 		p = true
 
@@ -193,6 +183,8 @@ func IsCA(k8scert string) bool {
 	return p
 }
 
+// CASave writes the string value of the certificate to a file
+// also prints out the name of the file if successful
 func CASave(cacert string, filename string) error {
 
 	file, err := os.Create(filename)

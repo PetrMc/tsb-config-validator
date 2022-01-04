@@ -2,147 +2,71 @@ package validator
 
 import (
 	"fmt"
-	"net/http"
-	"strconv"
 
 	"github.com/PetrMc/tsb-config-validator/src/collector"
 )
 
+// Worker function is a pivotal part of the validator - it follows the steps to proceed with different checks
+// that cover a significant service of the issues that were found in customer and test environments
+// the function is being called by Analysis function after doing some basic sanity checks
+
 func Worker(cred *collector.ES, conn collector.CPTelemetryStore, tkn *collector.TSBTokens, mp bool) {
 
+	// The variable p - can also be thought as pretty-print - an attempt to provide more readable output.
 	p := CustomPrint()
+
+	// During the checks some of source parametes will be changed - oc (stands for original connection)
+	// is used to preserve the original setting and present user with current (aka original) and modified
+	// settings (that according to the test performed here should be the correct settings)
 	oc := conn
-	if mp {
-		// if conn.Protocol == "http" {
-		// 	conn.Protocol = "https"
-		// 	fmt.Printf("\n\"protocol: http\" will not work with FrontEnvoy - testing with \"https\" instead\n")
-		// }
 
-		fmt.Printf("\nChecking connection between CP and FrontEnvoy (running in MP)\n")
-	} else {
-		fmt.Printf("\nChecking direct connection from CP to ElasticSearch\n")
-	}
+	// Calling MPPrint function for an output that can be viewed as excessive - however it reminds the user
+	// what checks exactly will be performed
+	MPPrint(mp)
 
+	// First check that is being done is the most important - the setting are used by ESCheck function
+	// in attempt to establish the connection between the validator (this code) and Elastic Search instance
+	// using exactly the same settings as TSB Control Plane would use. The function returns response (r)
+	// and the parsed body (that can have additional details of Elastic Search)
 	r, b := ESCheck(cred, &conn, tkn.Zipkint, mp)
-	// if b == nil {
-	// 	conn.Protocol = "https"
-	// 	r, b = ESCheck(cred, &conn, tkn.Zipkint, mp)
-	// }
-	// fmt.Printf(r.Status)
+
+	// the useful troubleshooting procedures are also possible with cURL - the below block forms the
+	// command line in Linux to allow additional troubleshooting. Currently (can change in future)
+	// two headers are used:
+
 	var header [2]string
+	// "tsb-route-target" is used to tell FrontEnvoy to act as proxy for Elastic search (technically
+	// can be dropped in CP-ES direct connection scenario) - however if present doesn't hurt (left here to simplify the logic
 	header[0] = " -H \"tsb-route-target: elasticsearch\" "
+	// x-tetrate-token: is also used by FrontEnvoy to validate the source of the connection
 	header[1] = " -H \"x-tetrate-token: " + tkn.Zipkint + "\" "
 
+	// m is a string that contains the whole command output
 	m := "curl -u " + cred.Username + ":" + cred.Password + " " + oc.Protocol + "://" + oc.Host + ":" + oc.Port + header[0] + header[1]
 
+	// the Status codes can be analyzed only when respose is received otherwise the only info that can be shared is curl
+	// command that has been used (as there is no connectivity)
 	if r != nil {
+		// Codes function serves as dictionary for the known codes and associated actions to fix those
 		Codes(conn, oc, r, b, true)
+
+		// The username and password validity is checked by ESCheck function - those are not valid - Status Code 401 is returned
+		// and properly handled by Codes function, additionally - one of the bahavoirs that is addressed here - use of return
+		// carriage (\n) in Elastic Search credentail password - if present some calls might succeed when others fail.
+		fmt.Printf("\nAnalyzing ES Credentials...\n")
+		PasswdCheck(cred)
+
+		// While the signature of tokens can only be validated with Private Key (not available to this code at the moment) - some basic checks
+		// can be done such as token expiration date and existence of the tokens
+		fmt.Printf("\nChecking tokens presence and expiry date...\n")
+		TokenCheck(tkn)
+		// currently the code still prints cURL detailed command for testing - if excessive - can be commented or removed
 		fmt.Printf("\n%v\nFor debug proposes you can use \"curl\" command per below:\n%v\n", p.Stars, m)
 	} else {
+		// This is the last resort - when Status Code is not returned - the only step that can be taken is to do basic checks with curl command
 		m := "curl -u " + cred.Username + ":" + cred.Password + " " + oc.Protocol + "://" + oc.Host + ":" + oc.Port
-		fmt.Printf("\n%v\nNo reponse received from the server - test with \"curl\" command could provide some networking data:\n%v\n", p.Stars, m)
+		fmt.Printf("\n%v\nNo response received from the server - test with \"curl\" command could provide some networking data:\n%v\n", p.Stars, m)
 
 	}
 
-}
-
-// func Checks(c *collector.ES, n collector.CPTelemetryStore) {
-// 	if n.Protocol == "https" {
-// 		if n.SelfSigned {
-// 			if len(c.Cert) == 0 {
-// 				fmt.Printf("\nThe self-signed is set to \"%v\". However \"es-cert\" is not received from \"istio-system\" namespace\nPlease create the secret...\n", n.SelfSigned)
-// 				CertCheck(n.Host, n.Port, n.SelfSigned, c.Cert, false)
-// 				return
-// 			} else {
-// 				CertCheck(n.Host, n.Port, n.SelfSigned, c.Cert, true)
-// 			}
-// 		}
-// 	}
-
-// }
-
-func Codes(c collector.CPTelemetryStore, oc collector.CPTelemetryStore, r *http.Response, b []byte, mp bool) bool {
-	var pm, sm string
-	p := CustomPrint()
-	// fmt.Println(r.StatusCode)
-	switch r.StatusCode {
-
-	// case 0:
-
-	// 	fmt.Printf("\n%v\nNo response from the server. Please review host/port number and firewall settings before trying again\n", p.Stars)
-	case 200:
-		m, v := VersionCheck(b, c.Version)
-
-		if v != "0" {
-
-			if oc.Protocol == c.Protocol && oc.SelfSigned == c.SelfSigned && m {
-				fmt.Printf("\n%v\nNo problems detected - your config works as expected (restarting \"oap-deployment\" and \"zipkin\" pods might be required", p.Stars)
-				fmt.Printf("\nPlease note that because the private key is required to check signature of the tokens, \nif oap is still restarting, then re-issuing the tokens could be the next step\n(to issue new tokens:\n%v- connect to the kubernes cluster that runs TSB Management plane\n%v- use tctl command \"tctl install manifest control-plane-secrets --cluster <cluster name>\" to generate the new set of tokens\n%v- save tokens to a file and apply in CP cluster", p.Indent, p.Indent, p.Indent)
-			} else {
-				fmt.Println(p.Stars)
-				if oc.Protocol != c.Protocol {
-					fmt.Printf("\nProtocol mismatch found - Current setting - %v Correct setting - %v", oc.Protocol, c.Protocol)
-
-				}
-				if oc.SelfSigned != c.SelfSigned {
-					fmt.Printf("\n\"SelfSigned\" parameter mismatch found - Current setting - %v Correct setting - %v", oc.SelfSigned, c.SelfSigned)
-				}
-				if !m {
-					fmt.Printf("\n%v\nElastic Search Version mismatch found - Current setting: %v however ES instance returns: %v\n", p.Indent, c.Version, v)
-				}
-				fmt.Printf("\n%v\nIn summary:\n", p.Stars)
-				fmt.Printf("\nCurrent settings:\n%vHost - %v | Port - %v | Protocol - %v | Selfsigned - %v | Version - %v\n", p.Indent, oc.Host, oc.Port, oc.Protocol, oc.SelfSigned, oc.Version)
-				fmt.Printf("\nThe correct settings:\n%vHost - %v | Port - %v | Protocol - %v | Selfsigned - %v | Version - %v\n", p.Indent, c.Host, c.Port, c.Protocol, c.SelfSigned, v)
-
-				fmt.Printf("\n%v\nAfter corrections the YAML of CP will look like this:", p.Stars)
-
-				if c.Protocol == "https" {
-					fmt.Printf("\n(Please note that \"protocol: https\" is default settings and it gets removed from the Control Plane CRD)")
-					pm = ""
-				} else {
-					pm = "\n      protocol: " + c.Protocol
-				}
-				if c.SelfSigned == false {
-
-					fmt.Printf("\n(Please note that \"selfSined: false\" is default settings and it gets removed from the Control Plane CRD)")
-					sm = ""
-				} else {
-					sm = "\n      selfSigned: " + strconv.FormatBool(c.SelfSigned)
-				}
-
-				// fmt.Printf("\n  telemetryStore:\n    elastic:\n      host: %v\n      port: %v\n      selfSigned: %v\n      protocol: %v\n      version: %v\n", c.Host, c.Port, ps, c.Protocol, c.Version)
-				fmt.Printf("\n  telemetryStore:\n    elastic:\n      host: %v\n      port: %v%v%v\n      version: %v\n", c.Host, c.Port, sm, pm, v)
-			}
-		} else {
-			fmt.Printf("\n%v\nNot so right...\nWe got the settings that produce correct code but ES is not responding as expected: \n", p.Stars)
-			return false
-		}
-
-		return true
-	case 401:
-
-		fmt.Printf("\nReceived HTTP Code: %v, which means credentials are not correctly specified in \"elastic-credentials\" secret in \"istio-system\"\n", r.StatusCode)
-		fmt.Printf("\nPlease fix and rerun if needed\n")
-		return true
-
-	case 503:
-		fmt.Printf("\n%v\nResponse status:%v\n%v\nThe settings are not working - currently we don't have a solution for you.\n", p.Stars, r.Status, p.Indent)
-		if mp {
-			fmt.Printf("Below are additional pointers to validated:")
-			fmt.Printf("\n%v- check if MP setting working correctly with the Elastic Search", p.Indent)
-			fmt.Printf("\n%v- point CP to Elastic search directly\n", p.Indent)
-		} else {
-
-		}
-
-	default:
-
-		fmt.Printf("\n%v\nResponse status:%v\n%v\nThe settings are not working - currently we don't have a solution for you.\n", p.Stars, r.Status, p.Indent)
-		if mp {
-			fmt.Printf("Pointing CP to Elastic search directly (instead of MP FrontEnvoy) can provide some additional data.\n")
-		}
-
-	}
-
-	return false
 }

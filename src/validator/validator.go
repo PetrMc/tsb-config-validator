@@ -13,65 +13,7 @@ import (
 	"github.com/PetrMc/tsb-config-validator/src/collector"
 )
 
-// func BruteForce(cr *collector.ES, c collector.CPTelemetryStore, prt []string) {
 
-// 	var r *http.Response
-// 	var b []byte
-// 	tconn := c
-
-// 	p := CustomPrint()
-
-// 	// prt := []string{"http", "https"}
-// 	crt := []bool{true, false}
-
-// 	for _, i := range prt {
-// 		for _, ss := range crt {
-
-// 			if i != c.Protocol || ss != c.SelfSigned {
-
-// 				tconn.Protocol = i
-// 				tconn.SelfSigned = ss
-// 				fmt.Printf("\n%v\nTrying the following combination:\nHost - %v | Port - %v | Protocol - %v | Selfsigned - %v \n", p.Stars, tconn.Host, tconn.Port, tconn.Protocol, tconn.SelfSigned)
-// 				r, b = MPCheck(cr, &tconn)
-// 				fmt.Printf("Response status:%v\n", r.Status)
-// 			}
-// 			if Codes(tconn, r, b, false) {
-// 				return
-// 			}
-// 			tconn = c
-
-// 		}
-// 	}
-// }
-
-func PasswdCheck(cr *collector.ES) {
-
-	p := CustomPrint()
-
-	origu := base64.StdEncoding.EncodeToString([]byte(cr.Username))
-
-	if len(cr.Password) == 0 || len(cr.Username) == 0 {
-		fmt.Printf("\n%v\nNot able to retieve username or password from \"elasitc-search secret\" in \"istio-system\" namaspace. Please check if the secret exists\n", p.Stars)
-		return
-	}
-
-	modu := base64.StdEncoding.EncodeToString([]byte(strings.Replace(cr.Username, "\n", "", -1)))
-	if origu != modu {
-
-		fmt.Printf("\n%v\nUsername seems to have return cariage \"\\n\" in it. \nPlease update \"elasitc-search secret\" in \"istio-system\" namaspace.\nUsername should be %v (currently it returns %v)\n", p.Stars, modu, origu)
-
-	}
-
-	origp := base64.StdEncoding.EncodeToString([]byte(cr.Password))
-
-	modp := base64.StdEncoding.EncodeToString([]byte(strings.Replace(cr.Password, "\n", "", -1)))
-	if origp != modp {
-
-		fmt.Printf("\n%v\nPassword seems to have return cariage \"\\n\" in it. \nPlease update \"elasitc-search secret\" in \"istio-system\" namaspace.\nPassword should be %v (currently it returns %v)\n", p.Stars, modp, origp)
-
-	}
-
-}
 
 func ESCheck(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool) (*http.Response, []byte) {
 	var resp *http.Response
@@ -105,7 +47,7 @@ func ESCheck(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool)
 	fmt.Printf("\nTrying ENCRYPTED connection to ES\n")
 	srv, srvcert := SRVCert(c.Host, c.Port)
 	if srv {
-		if IsPulic(srvcert) {
+		if IsPublic(srvcert) {
 			// is es-cert needed?
 			if c.SelfSigned {
 				fmt.Printf("\nThe server presents the publicly signed certificate - the current CP settings states that \"selfSigned: true\" while should be set to \"false\" (testing with \"false\" setting)\n")
@@ -171,91 +113,8 @@ func ESCheck(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool)
 	return ESDial(cr, c, t, mp, tr)
 }
 
-// func ESCheckOld(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool) (*http.Response, []byte) {
-// 	var resp *http.Response
-// 	var tc *tls.Config
-// 	var b []byte
 
-// 	pool := x509.NewCertPool()
-// 	p := CustomPrint()
 
-// 	fmt.Printf("\nEstablishing connection... ")
-// 	// if len(cr.Cert) != 0 {
-// 	// 	if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
-// 	// 		fmt.Println("Failed to append cert")
-// 	// 		tc = &tls.Config{RootCAs: pool}
-// 	// 	}
-// 	// } else {
-// 	// 	fmt.Printf("\"es-certs\" doesn't have the expected certificate (or the secret doesn't exist at all)... Trying connectivity using Public PKI\n")
-// 	// 	tc = &tls.Config{InsecureSkipVerify: true}
-// 	// }k,
-// 	if c.Protocol == "http" {
-// 		fmt.Printf("Trying PLAIN-TEXT connection to ES...\n")
-// 		tr := http.DefaultTransport.(*http.Transport).Clone()
-// 		// client := &http.Client{Transport: tr}
-// 		resp, b = ESDial(cr, c, t, mp, tr)
-
-// 		if b == nil {
-// 			c.Protocol = "https"
-// 		} else {
-// 			return resp, b
-// 		}
-// 	}
-
-// 	if c.Protocol == "https" {
-// 		fmt.Printf("Trying ENCRYPTED connection to ES\n")
-// 		if len(cr.Cert) != 0 {
-// 			if !CertCheck(c.Host, c.Port, c.SelfSigned, cr.Cert, true) {
-
-// 				return nil, nil
-// 			}
-// 			if c.SelfSigned {
-// 				// if !CertCheck(c.Host, c.Port, c.SelfSigned, cr.Cert, true) {
-
-// 				// 	return nil, nil
-// 				// }
-// 				if IsPulic(cr.Cert) {
-// 					fmt.Printf("\n%v\nThe server cert is publicly signed -- please change \"SelfSigned\" to \"false\" as currenlty this setting is incorrect\n%v", p.Stars, p.Stars)
-// 					c.SelfSigned = false
-
-// 				}
-// 			}
-// 			// fmt.Println(c.SelfSigned)
-// 			// fmt.Println(IsPulic(cr.Cert))
-// 			if !c.SelfSigned && !IsPulic(cr.Cert) {
-
-// 				fmt.Printf("\n%v\nThe server cert is selfsigned -- please change \"SelfSigned\" to \"true\" as currenlty this setting is incorrect\n%v", p.Stars, p.Stars)
-// 				c.SelfSigned = true
-
-// 			}
-// 			if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
-// 				fmt.Println("Failed to append cert")
-// 				tc = &tls.Config{RootCAs: pool}
-
-// 			}
-// 		} else {
-
-// 			tr := http.DefaultTransport.(*http.Transport).Clone()
-// 			resp, b = ESDial(cr, c, t, mp, tr)
-// 			// if resp.StatusCode == 0 {
-
-// 			// 	return resp, b
-// 			// } else {
-// 			fmt.Printf("\"es-certs\" doesn't have the expected certificate (or the secret doesn't exist at all)... ")
-// 			if resp.StatusCode != 0 {
-// 				fmt.Printf("Trying connectivity using Public PKI\nPlease create es-cert (per below) or change \"SelfSigned\" to \"false\"")
-// 				CertCheck(c.Host, c.Port, c.SelfSigned, "", false)
-// 				return resp, nil
-// 			}
-// 		}
-
-// 	}
-// 	tc = &tls.Config{InsecureSkipVerify: true}
-// 	tc = &tls.Config{RootCAs: pool}
-
-// 	tr := &http.Transport{TLSClientConfig: tc}
-// 	return ESDial(cr, c, t, mp, tr)
-// }
 
 func ESDial(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool, tr *http.Transport) (*http.Response, []byte) {
 
@@ -302,60 +161,6 @@ func ESDial(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool, 
 	return resp, b
 }
 
-// func MPCheck(cr *collector.ES, c *collector.CPTelemetryStore) (*http.Response, []byte) {
-// 	var req *http.Request
-// 	var resp *http.Response
-// 	var client *http.Client
-// 	var path string
-// 	var err error
-// 	var b []byte
-
-// 	pool := x509.NewCertPool()
-
-// 	path = c.Protocol + "://" + c.Host + ":" + c.Port
-
-// 	// p := CustomPrint()
-// 	if c.Protocol == "http" {
-// 		fmt.Printf("Establishing PLAIN connection per CP Manifest settings\n")
-// 		tr := http.DefaultTransport.(*http.Transport).Clone()
-// 		client = &http.Client{Transport: tr}
-// 	} else {
-// 		fmt.Printf("Establishing SECURE connection per CP Manifest settings\n")
-// 		if c.SelfSigned {
-
-// 			if ok := pool.AppendCertsFromPEM([]byte(cr.Cert)); !ok {
-// 				fmt.Println("Failed to append cert")
-// 			}
-
-// 		}
-// 		tc := &tls.Config{RootCAs: pool}
-// 		tr := &http.Transport{TLSClientConfig: tc}
-// 		client = &http.Client{Transport: tr}
-
-// 	}
-// 	req, err = http.NewRequest("GET", path, nil)
-// 	if err != nil {
-// 		fmt.Println(err.Error())
-// 	}
-
-// 	req.SetBasicAuth(cr.Username, cr.Password)
-
-// 	resp, err = client.Do(req)
-
-// 	if err != nil {
-
-// 		resp = new(http.Response)
-// 		resp.Status = err.Error()
-// 	} else {
-// 		b, err = io.ReadAll(resp.Body)
-// 		if err != nil {
-// 			fmt.Println(err.Error())
-// 		}
-
-// 	}
-// 	return resp, b
-
-// }
 
 func VersionCheck(b []byte, v string) (bool, string) {
 	// b, err := io.ReadAll(r.Body)
@@ -387,4 +192,33 @@ type ESResponse struct {
 	Version struct {
 		Number string
 	}
+}
+
+func PasswdCheck(cr *collector.ES) {
+
+	p := CustomPrint()
+
+	origu := base64.StdEncoding.EncodeToString([]byte(cr.Username))
+
+	if len(cr.Password) == 0 || len(cr.Username) == 0 {
+		fmt.Printf("\n%v\nNot able to retieve username or password from \"elastic-search secret\" in \"istio-system\" namaspace. Please check if the secret exists\n", p.Stars)
+		return
+	}
+
+	modu := base64.StdEncoding.EncodeToString([]byte(strings.Replace(cr.Username, "\n", "", -1)))
+	if origu != modu {
+
+		fmt.Printf("\n%v\nUsername seems to have return carriage \"\\n\" in it. \nPlease update \"elastic-search secret\" in \"istio-system\" namaspace.\nUsername should be %v (currently it returns %v)\n", p.Stars, modu, origu)
+
+	}
+
+	origp := base64.StdEncoding.EncodeToString([]byte(cr.Password))
+
+	modp := base64.StdEncoding.EncodeToString([]byte(strings.Replace(cr.Password, "\n", "", -1)))
+	if origp != modp {
+
+		fmt.Printf("\n%v\nPassword seems to have return carriage \"\\n\" in it. \nPlease update \"elasitc-search secret\" in \"istio-system\" namaspace.\nPassword should be %v (currently it returns %v)\n", p.Stars, modp, origp)
+
+	}
+
 }
