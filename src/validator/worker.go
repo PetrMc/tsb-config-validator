@@ -36,7 +36,7 @@ func Worker(cred *collector.ES, conn collector.CPTelemetryStore, tkn *collector.
 
 	var header [2]string
 	// "tsb-route-target" is used to tell FrontEnvoy to act as proxy for Elastic search (technically
-	// can be dropped in CP-ES direct connection scenario) - however if present doesn't hurt (left here to simplify the logic
+	// can be dropped in CP-ES direct connection scenario) - however if present doesn't hurt (left here to simplify the logic)
 	header[0] = " -H \"tsb-route-target: elasticsearch\" "
 	// x-tetrate-token: is also used by FrontEnvoy to validate the source of the connection
 	header[1] = " -H \"x-tetrate-token: " + tkn.Zipkint + "\" "
