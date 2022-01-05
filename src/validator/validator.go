@@ -109,7 +109,7 @@ func ESCheck(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool)
 					fmt.Printf("\nThe server has CA cert in its chain")
 					// First compare with kubernetes secret
 					if IsMatch(srvcert, cr.Cert) {
-						fmt.Printf(" and there in a matching certificate stored in \"es-certs\" in \"istio-system\" \nWill try to call the MP using the settings")
+						fmt.Printf(" and there is a matching certificate stored in \"es-certs\" in \"istio-system\" \nWill try to call the MP using the settings")
 					} else {
 						// if not save to the file and ask operator to apply.
 						fn := "/tmp/ca.crt"
@@ -259,7 +259,7 @@ type ESResponse struct {
 // in istio-system namespace)
 func PasswdCheck(cr *collector.ES) {
 
-	// Using internal function to accomondate readable output
+	// Using internal function to accommodate readable output
 	p := CustomPrint()
 
 	// checking if credentials have values

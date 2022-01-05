@@ -4,22 +4,18 @@ import (
 	"context"
 
 	"github.com/PetrMc/tsb-config-validator/api/v1alpha1/controlplane"
-	"k8s.io/client-go/rest"
 )
 
-type CPInterface interface {
-	Get(name string) (*controlplane.ControlPlane, error)
-}
 
-type CPClient struct {
-	restClient rest.Interface
-	ns         string
-}
-
+// Get used restclient config to query k8s cluster and obtain CP CRD
 func (c *CPClient) Get(name string) (*controlplane.ControlPlane, error) {
 
-	result := controlplane.ControlPlane{}
+	// received data will be stored in result variable
+	var result controlplane.ControlPlane
+
+	// err is to store and return the error if arise
 	var err error
+
 	ctx := context.Background()
 	err = c.restClient.
 		Get().

@@ -9,19 +9,14 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-type K8sInterface interface {
-	CP(namespace string) CPInterface
-}
-
-type K8sClient struct {
-	restClient rest.Interface
-}
-
+// Based on rest.config the function creates a client to 
+// query CP CRD
 func NewForConfig(c *rest.Config) (*K8sClient, error) {
 
+	// adding API definition
 	controlplane.AddToScheme(scheme.Scheme)
 
-	crdConfig := *config
+	crdConfig := *c
 	crdConfig.ContentConfig.GroupVersion = &schema.GroupVersion{Group: controlplane.GroupName, Version: controlplane.GroupVersion}
 	crdConfig.APIPath = "/apis"
 	crdConfig.NegotiatedSerializer = serializer.NewCodecFactory(scheme.Scheme)
@@ -36,6 +31,7 @@ func NewForConfig(c *rest.Config) (*K8sClient, error) {
 	return &K8sClient{restClient: client}, nil
 }
 
+// CP joins rest.Client config and namespace definitions
 func (c *K8sClient) CP(namespace string) CPInterface {
 	return &CPClient{
 		restClient: c.restClient,

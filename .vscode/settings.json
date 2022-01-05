@@ -1,5 +1,14 @@
 {
     "cSpell.words": [
-        "kopoli"
+        "corev",
+        "kopoli",
+        "kube",
+        "metav",
+        "oneof",
+        "protobuf",
+        "scfg",
+        "sigs",
+        "tetrateio",
+        "Unversioned"
     ]
 }
