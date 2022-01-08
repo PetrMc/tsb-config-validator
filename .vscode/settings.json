@@ -9,6 +9,7 @@
         "scfg",
         "sigs",
         "tetrateio",
-        "Unversioned"
+        "Unversioned",
+        "zipkin"
     ]
 }
