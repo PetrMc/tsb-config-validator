@@ -132,10 +132,6 @@ func ESCheck(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool)
 		return nil, nil
 	}
 
-	// the connection is made based on the settings and it's important to receive the results even
-	// there are some validation problems
-	tc = &tls.Config{InsecureSkipVerify: true}
-
 	// in SelfSigned scenario the stored CA is being added to the request.
 	if c.SelfSigned {
 		tc = &tls.Config{RootCAs: pool}
@@ -144,6 +140,7 @@ func ESCheck(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool)
 			tc = &tls.Config{RootCAs: pool}
 		}
 	}
+
 	// tr (transport is finalized here)
 	tr = &http.Transport{TLSClientConfig: tc}
 	// the function will return data from the test http call

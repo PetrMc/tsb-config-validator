@@ -1,8 +1,6 @@
 package collector
 
 import (
-	"fmt"
-
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/client-go/rest"
 	kubeConfig "sigs.k8s.io/controller-runtime/pkg/client/config"
@@ -20,9 +18,6 @@ func k8s() (*rest.Config, error) {
 	var config *rest.Config
 
 	config, err = kubeConfig.GetConfig()
-	if err != nil {
-		fmt.Println(err.Error())
-	}
 
 	return config, err
 }
