@@ -52,7 +52,9 @@ func ESCheck(cr *collector.ES, c *collector.CPTelemetryStore, t string, mp bool)
 			fmt.Printf("Can't establish plain HTTP connection, will try HTTPS")
 		} else {
 			// if successful no further checks is performed
-			return resp, b
+			if resp.StatusCode == 200 {
+				return resp, b
+			}
 		}
 	} else {
 		fmt.Printf("MP will only work with HTTPS skipping HTTP\n")
