@@ -7,8 +7,8 @@ the name of this package sounds much bigger than the content. However there are 
 
 - the package is using the users current Kubernetes context to query _`istio-system`_ namespace
 - if successful it obtains:
-  - Elastic Search credentials that are stored in _`es-credentials`_
-  - Elastic Search CA certificate that are stored in _`es-credentials`_
+  - Elastic Search credentials that are stored in _`elastic-credentials`_
+  - Elastic Search CA certificate that are stored in _`elastic-credentials`_
   - TSB Tokens _`zipkin-token`_, _`oap-token`_, _`xcp-edge-central-auth-token`_ and _`otel-token`_
   - than TSB Control Plane CRD is read - _`telemetryStore`_ and _`managementPlane`_ sections
 - When all info is collected the package analyzes the received data and tries to make an educated call to the ElasticSearch 

@@ -264,7 +264,7 @@ func PasswdCheck(cr *collector.ES) {
 	// checking if credentials have values
 
 	if len(cr.Password) == 0 || len(cr.Username) == 0 {
-		fmt.Printf("\n%v\nNot able to retieve username or password from \"elastic-search secret\" in \"istio-system\" namaspace. Please check if the secret exists\n", p.Stars)
+		fmt.Printf("\n%v\nNot able to retieve username or password from \"elastic-credentials secret\" in \"istio-system\" namaspace. Please check if the secret exists\n", p.Stars)
 		return
 	}
 
@@ -273,7 +273,7 @@ func PasswdCheck(cr *collector.ES) {
 	modu := base64.StdEncoding.EncodeToString([]byte(strings.Replace(cr.Username, "\n", "", -1)))
 
 	if origu != modu {
-		fmt.Printf("\n%v\nUsername seems to have return carriage \"\\n\" in it. \nPlease update \"elastic-search secret\" in \"istio-system\" namaspace.\nUsername should be %v (currently it returns %v)\n", p.Stars, modu, origu)
+		fmt.Printf("\n%v\nUsername seems to have return carriage \"\\n\" in it. \nPlease update \"elastic-credentials secret\" in \"istio-system\" namaspace.\nUsername should be %v (currently it returns %v)\n", p.Stars, modu, origu)
 	}
 
 	// comparing the password received (origp) with one that has "\n" removed (modp)
